@@ -1,0 +1,23 @@
+# Python
+backend/venv/
+**/__pycache__/
+*.pyc
+backend/.pytest_cache/
+.pytest_cache/
+
+# Environment
+.env
+backend/.env
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Brainstorming companion scratch
+.superpowers/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

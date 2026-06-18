@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: rebalancer-api
+    env: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SNAPSHOT_ENCRYPTION_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
