@@ -10,13 +10,13 @@ tax-deferred. Each sub-class rolls up to a display PARENT and has a default tax 
 ASSET_CLASSES = [
     "US Stock",
     "International",
-    "Muni Bond",
     "Taxable Bond",
+    "Muni Bond",
     "REITs",
-    "Cash",
     "Gold & Commodities",
     "Crypto",
     "Other Alternatives",
+    "Cash",
 ]
 
 # Display parent + default tax-efficiency for each sub-class.

@@ -1,5 +1,5 @@
 import {
-  AreaChart,
+  ComposedChart,
   Area,
   Line,
   XAxis,
@@ -39,7 +39,7 @@ export default function ProjectionChart({ points, height = 260, realDollars = tr
   return (
     <div>
       <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={data} margin={{ top: 12, right: 64, bottom: 0, left: 8 }}>
+        <ComposedChart data={data} margin={{ top: 12, right: 64, bottom: 0, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#3a3a3c" />
           <XAxis
             dataKey="year"
@@ -138,7 +138,7 @@ export default function ProjectionChart({ points, height = 260, realDollars = tr
               />
             </>
           )}
-        </AreaChart>
+        </ComposedChart>
       </ResponsiveContainer>
 
       {/* Legend */}

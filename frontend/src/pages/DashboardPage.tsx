@@ -90,14 +90,14 @@ export default function DashboardPage() {
   function handleSlider(v: number) {
     setSliderVal(v);
     if (analyzeDebounceRef.current) clearTimeout(analyzeDebounceRef.current);
-    analyzeDebounceRef.current = setTimeout(() => runAnalysis(v), 450);
+    analyzeDebounceRef.current = setTimeout(() => runAnalysis(v), 1000);
   }
 
   // Horizon: update label immediately, debounce the actual projection by 2 s.
   function handleHorizon(months: number) {
     setPendingHorizon(months);
     if (horizonDebounceRef.current) clearTimeout(horizonDebounceRef.current);
-    horizonDebounceRef.current = setTimeout(() => setHorizon(months), 2000);
+    horizonDebounceRef.current = setTimeout(() => setHorizon(months), 1000);
   }
 
   // Re-project when committed horizon or analysis changes.

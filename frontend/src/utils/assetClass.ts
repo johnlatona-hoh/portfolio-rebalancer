@@ -4,13 +4,13 @@
 export const ASSET_CLASSES = [
   "US Stock",
   "International",
-  "Muni Bond",
   "Taxable Bond",
+  "Muni Bond",
   "REITs",
-  "Cash",
   "Gold & Commodities",
   "Crypto",
   "Other Alternatives",
+  "Cash",
 ] as const;
 
 export type AssetClass = (typeof ASSET_CLASSES)[number];
