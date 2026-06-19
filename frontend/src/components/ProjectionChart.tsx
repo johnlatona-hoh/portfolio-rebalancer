@@ -18,9 +18,9 @@ interface Props {
   realDollars?: boolean;      // label axes as "today's $" vs "future $"
 }
 
-const MEDIAN_COLOR = "#d8a657";   // amber
-const FAN_COLOR = "#6b8cba";      // muted blue
-const DET_COLOR = "#4caf7d";      // dashed green
+const MEDIAN_COLOR = "#f5a623";   // bright orange — median (p50)
+const FAN_COLOR = "#6b8cba";      // muted blue — p10-p90 fan
+const DET_COLOR = "#4caf7d";      // green — steady/deterministic return
 
 /** Monte Carlo fan chart: p10–p90 shaded band, distinct amber median, dashed deterministic. */
 export default function ProjectionChart({ points, height = 260, realDollars = true }: Props) {
@@ -83,21 +83,20 @@ export default function ProjectionChart({ points, height = 260, realDollars = tr
             isAnimationActive={false}
           />
 
-          {/* Median — distinct amber line */}
+          {/* Median — bright orange, prominent */}
           <Line
             dataKey="p50"
             stroke={MEDIAN_COLOR}
-            strokeWidth={2.5}
+            strokeWidth={3}
             dot={false}
             isAnimationActive={false}
           />
 
-          {/* Deterministic — dashed green */}
+          {/* Steady/deterministic return — solid green, clearly distinct */}
           <Line
             dataKey="deterministic"
             stroke={DET_COLOR}
-            strokeWidth={1.5}
-            strokeDasharray="5 4"
+            strokeWidth={2}
             dot={false}
             isAnimationActive={false}
           />
@@ -145,24 +144,19 @@ export default function ProjectionChart({ points, height = 260, realDollars = tr
       {/* Legend */}
       <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-muted pl-8">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-6 h-0.5" style={{ background: MEDIAN_COLOR }} />
-          Median (p50)
+          <span className="inline-block w-6 h-0.5" style={{ background: MEDIAN_COLOR, height: 3 }} />
+          Median outcome (p50)
         </span>
         <span className="flex items-center gap-1">
           <span
             className="inline-block w-6 h-2.5 rounded-sm opacity-40"
             style={{ background: FAN_COLOR }}
           />
-          p10–p90 range
+          Likely range (p10–p90)
         </span>
         <span className="flex items-center gap-1">
-          <span
-            className="inline-block w-6 h-0.5"
-            style={{
-              background: `repeating-linear-gradient(to right, ${DET_COLOR} 0px, ${DET_COLOR} 5px, transparent 5px, transparent 9px)`,
-            }}
-          />
-          Steady return
+          <span className="inline-block w-6 h-0.5" style={{ background: DET_COLOR, height: 2 }} />
+          Steady return (no volatility)
         </span>
         <span className="ml-auto opacity-60">{realDollars ? "Today's $" : "Future $"}</span>
       </div>

@@ -180,7 +180,7 @@ def test_grade_is_10_when_everything_well_placed():
     grade = rebalance.location_grade(holdings, _tags())
 
     assert grade["misplaced_count"] == 0
-    assert grade["score"] == 10
+    assert grade["score"] == 100
 
 
 def test_grade_score_is_value_weighted():
@@ -193,12 +193,12 @@ def test_grade_score_is_value_weighted():
     # 90k of 100k inefficient is well placed -> score 9
     assert grade["inefficient_value"] == 100000
     assert grade["misplaced_value"] == 10000
-    assert grade["score"] == 9
+    assert grade["score"] == 90
 
 
-def test_grade_is_10_with_no_inefficient_assets():
+def test_grade_is_100_with_no_inefficient_assets():
     holdings = [_holding("Brokerage", "taxable", "VTI", 10000)]
-    assert rebalance.location_grade(holdings, _tags())["score"] == 10
+    assert rebalance.location_grade(holdings, _tags())["score"] == 100
 
 
 # ---------- strategy slider (gain_aversion) ----------

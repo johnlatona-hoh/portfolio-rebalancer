@@ -58,7 +58,7 @@ async def test_analyze_endpoint_returns_trades_and_grade(client):
     assert r.status_code == 200
     data = r.json()
     assert data["total_value"] == 100000
-    assert data["grade"]["score"] == 10  # everything well placed
+    assert data["grade"]["score"] == 100  # everything well placed
     # overweight US Stock should produce a sell somewhere
     assert any(t["asset_class"] == "US Stock" and t["action"] == "SELL" for t in data["trades"])
 

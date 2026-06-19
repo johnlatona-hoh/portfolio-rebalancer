@@ -125,12 +125,44 @@ class AutoTagRequest(BaseModel):
     items: list[AutoTagItem]
 
 
+# ---------- Users ----------
+
+class UserRegisterRequest(BaseModel):
+    email: str
+    pin: str = Field(min_length=4)
+
+
+class UserLoginRequest(BaseModel):
+    email: str
+    pin: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    created_at: datetime
+
+
+class SnapshotMeta(BaseModel):
+    id: str
+    label: str | None
+    description: str | None = None
+    created_at: datetime
+
+
+class LoginResponse(BaseModel):
+    user: UserResponse
+    snapshots: list[SnapshotMeta]
+
+
 # ---------- Snapshots ----------
 
 class SnapshotSaveRequest(BaseModel):
-    pin: str = Field(min_length=4)
+    email: str
+    pin: str
     payload: dict
-    label: str | None = None
+    label: str
+    description: str = ""
 
 
 class SnapshotSaveResponse(BaseModel):
@@ -139,21 +171,22 @@ class SnapshotSaveResponse(BaseModel):
 
 
 class SnapshotLoadRequest(BaseModel):
+    email: str
     pin: str
-    id: str | None = None  # if omitted, returns the most recent snapshot for this PIN
-
-
-class SnapshotMeta(BaseModel):
     id: str
-    label: str | None
-    created_at: datetime
 
 
 class SnapshotLoadResponse(BaseModel):
     id: str
     payload: dict
     label: str | None
+    description: str | None = None
     created_at: datetime
+
+
+class SnapshotDeleteRequest(BaseModel):
+    email: str
+    pin: str
 
 
 # ---------- Advisor ----------

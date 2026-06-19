@@ -16,13 +16,13 @@ import { deflatePoints } from "../utils/inflation";
 import AllocationBars from "../components/AllocationBars";
 import TradeTable from "../components/TradeTable";
 import ProjectionChart from "../components/ProjectionChart";
+import ReturnAssumptions from "../components/ReturnAssumptions";
 import HorizonControl from "../components/HorizonControl";
 import ScenarioPanel from "../components/ScenarioPanel";
 import GradeCard from "../components/GradeCard";
 import StrategySlider from "../components/StrategySlider";
 import InflationControls from "../components/InflationControls";
 import TipsBox from "../components/TipsBox";
-import HoldingsDetail from "../components/HoldingsDetail";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -35,32 +35,33 @@ export default function DashboardPage() {
 
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [projection, setProjection] = useState<ProjectResponse | null>(null);
-  const [horizon, setHorizon] = useState(240); // months
+
+  // Horizon: pendingHorizon updates live (label shows immediately); horizon commits
+  // only after 2 s of no change (debounced) to avoid hammering the projection API.
+  const [horizon, setHorizon] = useState(240);
+  const [pendingHorizon, setPendingHorizon] = useState(240);
+  const horizonDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Strategy slider (gain_aversion)
-  const [sliderVal, setSliderVal] = useState(0); // 0..100
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sliderVal, setSliderVal] = useState(0);
+  const analyzeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Inflation / real-vs-nominal toggle
   const [realDollars, setRealDollars] = useState(true);
   const [inflationPct, setInflationPct] = useState(2.5);
 
-  // AI insights (old-style)
+  // AI insights
   const [insights, setInsights] = useState<string[] | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
 
-  // Holdings drill-down
-  const [selectedClass, setSelectedClass] = useState<string | null>(null);
+  // Tag map for inline holdings accordion
   const [tagMap, setTagMap] = useState<Record<string, TickerTag>>({});
 
   const [error, setError] = useState<string | null>(null);
 
-  // Load all tags once for the HoldingsDetail drill-down.
   useEffect(() => {
     listTags()
-      .then((tags) =>
-        setTagMap(Object.fromEntries(tags.map((t) => [t.ticker, t])))
-      )
+      .then((tags) => setTagMap(Object.fromEntries(tags.map((t) => [t.ticker, t]))))
       .catch(() => {});
   }, []);
 
@@ -69,7 +70,6 @@ export default function DashboardPage() {
     [analysis]
   );
 
-  // Analyze whenever holdings/targets/gainAversion changes. Debounce the slider.
   const runAnalysis = useCallback(
     (gainAversion: number) => {
       if (!loaded) return;
@@ -81,23 +81,32 @@ export default function DashboardPage() {
     [holdings, targets, loaded]
   );
 
+  // Re-analyze on portfolio change.
   useEffect(() => {
     runAnalysis(sliderVal);
-  }, [holdings, targets, loaded]); // only re-run on portfolio changes here
+  }, [holdings, targets, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Debounced strategy slider re-analyze.
   function handleSlider(v: number) {
     setSliderVal(v);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => runAnalysis(v), 450);
+    if (analyzeDebounceRef.current) clearTimeout(analyzeDebounceRef.current);
+    analyzeDebounceRef.current = setTimeout(() => runAnalysis(v), 450);
   }
 
-  // Re-project when analysis or horizon changes.
+  // Horizon: update label immediately, debounce the actual projection by 2 s.
+  function handleHorizon(months: number) {
+    setPendingHorizon(months);
+    if (horizonDebounceRef.current) clearTimeout(horizonDebounceRef.current);
+    horizonDebounceRef.current = setTimeout(() => setHorizon(months), 2000);
+  }
+
+  // Re-project when committed horizon or analysis changes.
   useEffect(() => {
     if (!analysis) return;
     projectPortfolio(valueByClass, horizon).then(setProjection).catch(() => setProjection(null));
   }, [analysis, horizon, valueByClass]);
 
-  // Apply inflation deflation client-side.
+  // Deflate projection client-side for real-dollars view.
   const displayedPoints = useMemo(() => {
     if (!projection) return null;
     return realDollars ? deflatePoints(projection.points, inflationPct) : projection.points;
@@ -133,7 +142,6 @@ export default function DashboardPage() {
   if (error) return <p className="text-bad">{error}</p>;
   if (!analysis) return <p className="text-muted">Analyzing…</p>;
 
-  const accountCount = analysis.by_account.length;
   const totalGains = analysis.realized_gains ?? 0;
 
   return (
@@ -146,7 +154,7 @@ export default function DashboardPage() {
         </Card>
         <Card>
           <div className="text-xs uppercase text-muted">Accounts</div>
-          <div className="text-2xl font-semibold mt-1">{accountCount}</div>
+          <div className="text-2xl font-semibold mt-1">{analysis.by_account.length}</div>
           <div className="text-xs text-muted mt-1">
             {[...new Set(analysis.by_account.map((a) => ACCOUNT_TYPE_LABELS[a.account_type]))].join(", ")}
           </div>
@@ -180,11 +188,12 @@ export default function DashboardPage() {
           <h3 className="font-semibold mb-3">Current vs Target (Blended)</h3>
           <AllocationBars
             blended={analysis.blended}
-            onSelectClass={setSelectedClass}
+            holdings={holdings}
+            tags={tagMap}
+            totalPortfolioValue={analysis.total_value}
           />
           <p className="text-xs text-muted mt-3">
-            Each bar shows current allocation (filled) vs your target (white marker). Click a
-            class to see its individual holdings.
+            Click any category to see the individual holdings within it.
           </p>
         </Card>
         <Card>
@@ -197,7 +206,7 @@ export default function DashboardPage() {
                 inflationPct={inflationPct}
                 onInflationChange={setInflationPct}
               />
-              <HorizonControl months={horizon} onChange={setHorizon} />
+              <HorizonControl months={pendingHorizon} onChange={handleHorizon} />
             </div>
           </div>
           {displayedPoints ? (
@@ -205,6 +214,7 @@ export default function DashboardPage() {
           ) : (
             <p className="text-muted text-sm">Projecting…</p>
           )}
+          <ReturnAssumptions blended={analysis.blended} />
         </Card>
       </div>
 
@@ -223,11 +233,11 @@ export default function DashboardPage() {
 
       {/* ---- tips ---- */}
       <Card>
-        <h3 className="font-semibold mb-3">Investing Principles (Rob Berger)</h3>
+        <h3 className="font-semibold mb-3">Investing Principles</h3>
         <TipsBox analysis={analysis} />
       </Card>
 
-      {/* ---- AI advisor (legacy insights) ---- */}
+      {/* ---- AI advisor ---- */}
       <Card>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold">AI Tax-Location Advisor</h3>
@@ -265,17 +275,6 @@ export default function DashboardPage() {
           current={analysis}
         />
       </Card>
-
-      {/* ---- holdings drill-down modal ---- */}
-      {selectedClass && (
-        <HoldingsDetail
-          assetClass={selectedClass}
-          holdings={holdings}
-          tags={tagMap}
-          totalPortfolioValue={analysis.total_value}
-          onClose={() => setSelectedClass(null)}
-        />
-      )}
     </div>
   );
 }

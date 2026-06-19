@@ -17,6 +17,8 @@ interface PortfolioState {
   setTargets: (t: Record<string, number>) => void;
   reset: () => void;
   loaded: boolean;
+  /** Restore a snapshot directly from raw holdings + targets (bypasses CSV parsing). */
+  loadPortfolio: (holdings: Holding[], targets: Record<string, number>) => void;
 }
 
 const Ctx = createContext<PortfolioState | null>(null);
@@ -24,12 +26,21 @@ const Ctx = createContext<PortfolioState | null>(null);
 export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<ParsedAccount[]>([]);
   const [targets, setTargets] = useState<Record<string, number>>({});
+  const [holdingsOverride, setHoldingsOverride] = useState<Holding[] | null>(null);
 
-  const holdings = useMemo(() => accounts.flatMap(holdingsForAccount), [accounts]);
+  const derivedHoldings = useMemo(() => accounts.flatMap(holdingsForAccount), [accounts]);
+  const holdings = holdingsOverride ?? derivedHoldings;
 
   const reset = () => {
     setAccounts([]);
     setTargets({});
+    setHoldingsOverride(null);
+  };
+
+  const loadPortfolio = (rawHoldings: Holding[], rawTargets: Record<string, number>) => {
+    setHoldingsOverride(rawHoldings);
+    setTargets(rawTargets);
+    setAccounts([]); // clear parsed accounts — holdings override takes precedence
   };
 
   return (
@@ -42,6 +53,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         setTargets,
         reset,
         loaded: holdings.length > 0,
+        loadPortfolio,
       }}
     >
       {children}

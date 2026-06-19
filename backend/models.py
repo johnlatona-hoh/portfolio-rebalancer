@@ -1,9 +1,21 @@
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Text
+from sqlalchemy import String, DateTime, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
+
+
+class User(Base):
+    """Email + PIN account for multi-user snapshot storage.
+    PIN is never stored plaintext - only a per-user salted HMAC-SHA256 hash."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)       # uuid4 hex
+    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    pin_hash: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class TickerTag(Base):
@@ -24,14 +36,19 @@ class TickerTag(Base):
 
 
 class Snapshot(Base):
-    """A PIN-keyed, encrypted point-in-time portfolio capture. The payload is an
+    """A user-owned, encrypted point-in-time portfolio capture. The payload is an
     encrypted JSON blob (holdings + targets + computed trades). It is PII-light:
-    tickers, quantities, and account *types* only - no names or account numbers."""
+    tickers, quantities, and account *types* only - no names or account numbers.
+
+    user_id and description are added via run_migrations() ALTER TABLE on existing
+    deployments (may be NULL on old rows)."""
 
     __tablename__ = "snapshots"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)        # uuid4 hex
-    pin_hash: Mapped[str] = mapped_column(String, index=True)        # salted hash of the user PIN
-    payload: Mapped[str] = mapped_column(Text)                       # Fernet-encrypted JSON
-    label: Mapped[str | None] = mapped_column(String, nullable=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True)           # uuid4 hex
+    pin_hash: Mapped[str] = mapped_column(String, index=True)           # legacy: old PIN-keyed rows
+    payload: Mapped[str] = mapped_column(Text)                          # Fernet-encrypted JSON
+    label: Mapped[str | None] = mapped_column(String, nullable=True)    # user-chosen title
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    user_id: Mapped[str | None] = mapped_column(String, nullable=True)  # FK -> users.id
+    description: Mapped[str | None] = mapped_column(String, nullable=True, default="")

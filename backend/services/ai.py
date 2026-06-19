@@ -71,7 +71,7 @@ async def portfolio_insights(summary: dict) -> list[str] | None:
 
 
 async def berger_tips(summary: dict) -> list[dict] | None:
-    """Generate 3-4 Rob Berger-style practical investing tips tailored to this portfolio.
+    """Generate 3-4 practical index-investing tips tailored to this portfolio.
     Each tip has a title, body, and optional advantage/disadvantage note. Returns None when
     GEMINI_API_KEY is absent."""
     if not settings.GEMINI_API_KEY:
@@ -80,10 +80,10 @@ async def berger_tips(summary: dict) -> list[dict] | None:
     try:
         client = _client()
         prompt = (
-            "You are writing in the voice of Rob Berger -- a pragmatic, plain-English personal "
-            "finance educator who champions low-cost index funds, simplicity, the 3-fund portfolio, "
-            "high savings rate, and avoiding market timing. You are given an anonymized portfolio "
-            "summary as JSON. Write 3-4 actionable, specific tips tailored to this portfolio.\n\n"
+            "You are a pragmatic, plain-English personal finance educator who champions "
+            "low-cost index funds, simplicity, the 3-fund portfolio, a high savings rate, "
+            "and avoiding market timing. You are given an anonymized portfolio summary as "
+            "JSON. Write 3-4 actionable, specific tips tailored to this portfolio.\n\n"
             "Each tip must include:\n"
             "  - title: short phrase (5-10 words)\n"
             "  - body: 1-3 sentences, concrete and portfolio-specific, plain English\n"

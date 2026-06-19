@@ -1,5 +1,6 @@
 import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
 import { PortfolioProvider, usePortfolio } from "./state/portfolio";
+import { AuthProvider } from "./state/auth";
 import SetupPage from "./pages/SetupPage";
 import DashboardPage from "./pages/DashboardPage";
 import SnapshotPage from "./pages/SnapshotPage";
@@ -28,7 +29,7 @@ function Navbar() {
           Dashboard
         </NavLink>
         <NavLink to="/snapshots" className={link}>
-          Snapshots
+          My Portfolios
         </NavLink>
         {loaded && (
           <button
@@ -45,17 +46,19 @@ function Navbar() {
 
 export default function App() {
   return (
-    <PortfolioProvider>
-      <div className="min-h-screen bg-surface text-gray-100">
-        <Navbar />
-        <main className="max-w-screen-xl mx-auto px-4 py-6">
-          <Routes>
-            <Route path="/" element={<SetupPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/snapshots" element={<SnapshotPage />} />
-          </Routes>
-        </main>
-      </div>
-    </PortfolioProvider>
+    <AuthProvider>
+      <PortfolioProvider>
+        <div className="min-h-screen bg-surface text-gray-100">
+          <Navbar />
+          <main className="max-w-screen-xl mx-auto px-4 py-6">
+            <Routes>
+              <Route path="/" element={<SetupPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/snapshots" element={<SnapshotPage />} />
+            </Routes>
+          </main>
+        </div>
+      </PortfolioProvider>
+    </AuthProvider>
   );
 }

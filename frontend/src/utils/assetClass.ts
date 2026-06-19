@@ -47,3 +47,17 @@ export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   tax_deferred: "Tax-Deferred",
   tax_free: "Tax-Free",
 };
+
+// Mirror of backend/constants.py RETURN_ASSUMPTIONS — long-run annual estimates used
+// by the Monte Carlo projection engine. Conservative, not predictions.
+export const RETURN_ASSUMPTIONS: Record<string, { mean: number; stdev: number }> = {
+  "US Stock":           { mean: 0.070, stdev: 0.16 },
+  "International":      { mean: 0.070, stdev: 0.18 },
+  "Muni Bond":          { mean: 0.030, stdev: 0.05 },
+  "Taxable Bond":       { mean: 0.030, stdev: 0.05 },
+  "REITs":              { mean: 0.065, stdev: 0.19 },
+  "Cash":               { mean: 0.020, stdev: 0.01 },
+  "Gold & Commodities": { mean: 0.040, stdev: 0.16 },
+  "Crypto":             { mean: 0.100, stdev: 0.55 },
+  "Other Alternatives": { mean: 0.050, stdev: 0.14 },
+};

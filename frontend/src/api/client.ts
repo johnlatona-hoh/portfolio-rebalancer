@@ -91,7 +91,19 @@ export interface TickerTag {
 export interface SnapshotMeta {
   id: string;
   label: string | null;
+  description: string | null;
   created_at: string;
+}
+
+export interface UserResponse {
+  id: string;
+  email: string;
+  created_at: string;
+}
+
+export interface LoginResponse {
+  user: UserResponse;
+  snapshots: SnapshotMeta[];
 }
 
 export interface BergerTip {
@@ -154,21 +166,46 @@ export async function suggestTag(
   return data;
 }
 
+// ---------- User accounts ----------
+
+export async function registerUser(email: string, pin: string): Promise<LoginResponse> {
+  const { data } = await api.post<LoginResponse>("/users/register", { email, pin });
+  return data;
+}
+
+export async function loginUser(email: string, pin: string): Promise<LoginResponse> {
+  const { data } = await api.post<LoginResponse>("/users/login", { email, pin });
+  return data;
+}
+
+// ---------- Snapshots (user-scoped) ----------
+
 export async function saveSnapshot(
+  email: string,
   pin: string,
   payload: unknown,
-  label?: string
+  label: string,
+  description?: string
 ): Promise<{ id: string; created_at: string }> {
-  const { data } = await api.post("/snapshots", { pin, payload, label });
+  const { data } = await api.post("/snapshots", { email, pin, payload, label, description: description ?? "" });
   return data;
 }
 
 export async function loadSnapshot(
+  email: string,
   pin: string,
-  id?: string
-): Promise<{ id: string; payload: unknown; label: string | null; created_at: string }> {
-  const { data } = await api.post("/snapshots/load", { pin, id: id ?? null });
+  id: string
+): Promise<{ id: string; payload: unknown; label: string | null; description: string | null; created_at: string }> {
+  const { data } = await api.post("/snapshots/load", { email, pin, id });
   return data;
+}
+
+export async function deleteSnapshot(
+  email: string,
+  pin: string,
+  id: string
+): Promise<void> {
+  await api.delete(`/snapshots/${id}`, { data: { email, pin } });
 }
 
 export async function getInsights(summary: unknown): Promise<string[]> {

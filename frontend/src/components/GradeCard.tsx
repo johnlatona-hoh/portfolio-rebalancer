@@ -3,18 +3,18 @@ import type { LocationGrade } from "../api/client";
 import { fmtMoney } from "../utils/money";
 
 function scoreHex(score: number): string {
-  if (score >= 9) return "#4caf7d";  // green
-  if (score >= 7) return "#a6c270";  // yellow-green
-  if (score >= 5) return "#d8a657";  // amber
-  if (score >= 3) return "#c87a3a";  // orange
-  return "#c0544a";                  // red
+  if (score >= 90) return "#4caf7d";  // green
+  if (score >= 70) return "#a6c270";  // yellow-green
+  if (score >= 50) return "#d8a657";  // amber
+  if (score >= 30) return "#c87a3a";  // orange
+  return "#c0544a";                   // red
 }
 
 function scoreLabel(score: number): string {
-  if (score >= 9) return "Excellent";
-  if (score >= 7) return "Good";
-  if (score >= 5) return "Fair";
-  if (score >= 3) return "Poor";
+  if (score >= 90) return "Excellent";
+  if (score >= 70) return "Good";
+  if (score >= 50) return "Fair";
+  if (score >= 30) return "Poor";
   return "Very poor";
 }
 
@@ -34,7 +34,7 @@ export default function GradeCard({ grade }: Props) {
         <span className="text-3xl font-bold" style={{ color }}>
           {grade.score}
         </span>
-        <span className="text-base font-normal text-muted">/10 — {scoreLabel(grade.score)}</span>
+        <span className="text-base font-normal text-muted">/100 — {scoreLabel(grade.score)}</span>
       </div>
 
       {grade.misplaced_count > 0 ? (

@@ -191,13 +191,16 @@ export default function ScenarioPanel({ baseHoldings, targets, horizonMonths, cu
                           {p != null ? `$${p.toFixed(2)}` : "—"}
                         </td>
                         <td className="p-1 text-right">
-                          <input
-                            type="number"
-                            min={0}
-                            value={h.current_value || ""}
-                            onChange={(e) => editField(i, { current_value: Number(e.target.value) })}
-                            className="w-24 bg-surface border border-border rounded px-1 py-0.5 text-right"
-                          />
+                          <span className="inline-flex items-center gap-0.5">
+                            <span className="text-muted text-xs">$</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={h.current_value ? Math.round(h.current_value) : ""}
+                              onChange={(e) => editField(i, { current_value: Math.round(Number(e.target.value)) })}
+                              className="w-20 bg-surface border border-border rounded px-1 py-0.5 text-right"
+                            />
+                          </span>
                         </td>
                         <td className="p-1 text-right text-muted">{acctPct.toFixed(1)}%</td>
                         <td className="p-1 text-right text-muted">{totPct.toFixed(1)}%</td>

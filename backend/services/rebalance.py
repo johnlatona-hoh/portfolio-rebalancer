@@ -278,14 +278,14 @@ def plan_trades(holdings, targets, tags, total, gain_aversion: float = 0.0):
 
 
 def location_grade(holdings, tags):
-    """Value-weighted asset-location score on a 1-10 scale (10 = best).
+    """Value-weighted asset-location score on a 1-100 scale (100 = best).
 
     A holding is "misplaced" when a tax-inefficient asset (taxable bonds, REITs, etc.)
     sits in a taxable account, where its ordinary-income distributions are taxed each
     year instead of being sheltered. The score reflects the share of inefficient DOLLARS
     that are correctly located, not a count of holdings.
 
-    score = 10 * (inefficient $ correctly placed / total inefficient $); 10 when there
+    score = 100 * (inefficient $ correctly placed / total inefficient $); 100 when there
     are no inefficient assets to worry about; floored at 1.
     """
     misplaced_value = 0.0
@@ -304,10 +304,10 @@ def location_grade(holdings, tags):
             misplaced.append({"ticker": h["ticker"], "asset_class": tag["asset_class"], "value": v})
 
     if inefficient_value <= 0:
-        score = 10
+        score = 100
     else:
         well_placed_ratio = max(0.0, (inefficient_value - misplaced_value) / inefficient_value)
-        score = max(1, min(10, int(round(10 * well_placed_ratio))))
+        score = max(1, min(100, int(round(100 * well_placed_ratio))))
 
     # Build human reasons, biggest offenders first.
     misplaced.sort(key=lambda x: -x["value"])
@@ -324,7 +324,7 @@ def location_grade(holdings, tags):
         )
 
     methodology = (
-        "Score is value-weighted on a 1-10 scale (10 = best). It measures the share of "
+        "Score is value-weighted on a 1-100 scale (100 = best). It measures the share of "
         "tax-inefficient dollars (taxable bonds, REITs, etc.) sitting in tax-advantaged "
         "accounts. A holding is 'misplaced' when an inefficient asset sits in a taxable "
         "account, where its ordinary-income distributions are taxed each year. Munis, broad "

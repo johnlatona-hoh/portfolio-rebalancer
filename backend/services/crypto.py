@@ -29,9 +29,14 @@ def _fernet() -> Fernet:
     return Fernet(key.encode() if isinstance(key, str) else key)
 
 
-def hash_pin(pin: str) -> str:
-    """Deterministic salted hash of the PIN, used as the lookup key."""
-    return hmac.new(_PIN_SALT, pin.encode("utf-8"), hashlib.sha256).hexdigest()
+def hash_pin(pin: str, user_id: str | None = None) -> str:
+    """Deterministic salted hash of the PIN, used as the lookup key.
+
+    When user_id is provided the salt is personalised so the same PIN produces
+    different hashes for different users (prevents cross-user PIN enumeration).
+    """
+    salt = (_PIN_SALT + b":" + user_id.encode()) if user_id else _PIN_SALT
+    return hmac.new(salt, pin.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def encrypt_payload(payload: dict) -> str:

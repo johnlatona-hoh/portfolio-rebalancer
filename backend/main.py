@@ -6,15 +6,15 @@ from sqlalchemy import text
 
 from config import settings
 from database import create_tables, engine
-from routers import portfolio, tags, snapshots, advisor
+from routers import portfolio, tags, snapshots, users, advisor
 
 
 async def run_migrations():
-    """Add new columns to existing tables if they don't exist yet, so deploys self-heal.
-    (No entries needed yet - create_tables() builds the current schema on first boot.)"""
-    migrations: list[str] = []
-    if not migrations:
-        return
+    """Add new columns to existing tables if they don't exist yet, so deploys self-heal."""
+    migrations: list[str] = [
+        "ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS user_id VARCHAR",
+        "ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT ''",
+    ]
     async with engine.begin() as conn:
         for sql in migrations:
             await conn.execute(text(sql))
@@ -40,6 +40,7 @@ app.add_middleware(
 app.include_router(portfolio.router)
 app.include_router(tags.router)
 app.include_router(snapshots.router)
+app.include_router(users.router)
 app.include_router(advisor.router)
 
 

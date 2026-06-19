@@ -129,7 +129,7 @@ export default function TipsBox({ analysis }: Props) {
 
       {/* curated principles */}
       <div>
-        <div className="text-xs uppercase text-muted mb-2">Rob Berger principles</div>
+        <div className="text-xs uppercase text-muted mb-2">Core principles</div>
         <div className="space-y-3">
           {displayed.map((t, i) => (
             <div key={i} className="border-l-2 border-border pl-3">
