@@ -14,7 +14,7 @@ import math
 
 from constants import (
     ASSET_CLASSES, parent_of,
-    RETURN_ASSUMPTIONS, MAX_DRAWDOWN_PCT, get_correlation,
+    RETURN_ASSUMPTIONS, MAX_DRAWDOWN_PCT, get_correlation, FEE_ASSUMPTIONS,
 )
 
 # Per-account-type fill preference: which asset classes to place in each account type
@@ -371,6 +371,15 @@ def _class_of(ticker: str, tags: dict) -> str | None:
     return tags.get(ticker, {}).get("asset_class")
 
 
+def _fee_of(ticker: str, cls: str, tags: dict) -> float:
+    """Effective annual expense ratio (decimal) for a holding: the ticker's explicit
+    expense_ratio if set, else the asset-class fallback from FEE_ASSUMPTIONS."""
+    er = tags.get(ticker, {}).get("expense_ratio")
+    if er is not None:
+        return er
+    return FEE_ASSUMPTIONS.get(cls, 0.0)
+
+
 def compute_risk_metrics(holdings: list, by_account_data: list, tags: dict, total_value: float):
     """Return a dict matching PortfolioRisk, or None if total_value is zero."""
     if total_value <= 0:
@@ -411,6 +420,20 @@ def compute_risk_metrics(holdings: list, by_account_data: list, tags: dict, tota
     largest_pct = (tagged[0]["current_value"] / total_value * 100) if tagged else 0.0
     top5_pct = sum(h["current_value"] for h in tagged[:5]) / total_value * 100
 
+    # Portfolio-wide fees: value-weighted expense ratio + total annual cost
+    portfolio_fee_cost = sum(
+        h["current_value"] * _fee_of(h["ticker"], _class_of(h["ticker"], tags), tags)
+        for h in tagged
+    )
+    weighted_fee = portfolio_fee_cost / total_value if total_value > 0 else 0.0
+
+    # Per-account fee cost, summed from each holding's effective expense ratio
+    acct_fee_cost: dict[str, float] = {}
+    for h in tagged:
+        cls = _class_of(h["ticker"], tags)
+        acct_fee_cost[h["account_name"]] = acct_fee_cost.get(h["account_name"], 0.0) + \
+            h["current_value"] * _fee_of(h["ticker"], cls, tags)
+
     # Per-account risk
     acct_val_map = {a["account_name"]: a["value"] for a in by_account_data}
     account_risks = []
@@ -428,6 +451,7 @@ def compute_risk_metrics(holdings: list, by_account_data: list, tags: dict, tota
             acct_weights.get(c, 0.0) * MAX_DRAWDOWN_PCT.get(c, 0.0)
             for c in ASSET_CLASSES
         )
+        fee_cost = acct_fee_cost.get(a["account_name"], 0.0)
         account_risks.append({
             "account_name": a["account_name"],
             "account_type": a["account_type"],
@@ -435,6 +459,8 @@ def compute_risk_metrics(holdings: list, by_account_data: list, tags: dict, tota
             "expected_return_pct": round(acct_return * 100, 2),
             "volatility_pct": round(acct_vol * 100, 2),
             "max_drawdown_pct": round(acct_dd * 100, 2),
+            "fee_pct": round(fee_cost / acct_val * 100, 4),
+            "annual_fee_cost": round(fee_cost, 2),
         })
 
     # Per-holding risk
@@ -442,6 +468,7 @@ def compute_risk_metrics(holdings: list, by_account_data: list, tags: dict, tota
     for h in tagged:
         cls = _class_of(h["ticker"], tags)
         acct_val = acct_val_map.get(h["account_name"], 0.0)
+        fee = _fee_of(h["ticker"], cls, tags)
         holding_risks.append({
             "ticker": h["ticker"],
             "account_name": h["account_name"],
@@ -452,6 +479,8 @@ def compute_risk_metrics(holdings: list, by_account_data: list, tags: dict, tota
             "expected_return_pct": round(RETURN_ASSUMPTIONS.get(cls, {"mean": 0.0})["mean"] * 100, 2),
             "volatility_pct": round(RETURN_ASSUMPTIONS.get(cls, {"stdev": 0.0})["stdev"] * 100, 2),
             "max_drawdown_pct": round(MAX_DRAWDOWN_PCT.get(cls, 0.0) * 100, 2),
+            "fee_pct": round(fee * 100, 4),
+            "annual_fee_cost": round(h["current_value"] * fee, 2),
         })
 
     return {
@@ -461,6 +490,8 @@ def compute_risk_metrics(holdings: list, by_account_data: list, tags: dict, tota
         "diversification_benefit_pct": round(div_benefit * 100, 2),
         "largest_position_pct": round(largest_pct, 2),
         "top5_concentration_pct": round(top5_pct, 2),
+        "weighted_fee_pct": round(weighted_fee * 100, 4),
+        "annual_fee_cost": round(portfolio_fee_cost, 2),
         "by_account": account_risks,
         "by_holding": holding_risks,
     }

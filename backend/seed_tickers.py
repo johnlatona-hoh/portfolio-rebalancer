@@ -22,14 +22,16 @@ async def seed():
         by_ticker = {t.ticker: t for t in existing_rows}
 
         added = updated = 0
-        for ticker, (asset_class, tax_eff, name) in SEED_TICKERS.items():
+        for ticker, (asset_class, tax_eff, name, expense_ratio) in SEED_TICKERS.items():
             row = by_ticker.get(ticker)
             if row:
                 row.asset_class, row.tax_efficiency, row.name = asset_class, tax_eff, name
+                row.expense_ratio = expense_ratio
                 updated += 1
             else:
                 db.add(TickerTag(ticker=ticker, asset_class=asset_class,
-                                 tax_efficiency=tax_eff, name=name))
+                                 tax_efficiency=tax_eff, name=name,
+                                 expense_ratio=expense_ratio))
                 added += 1
         await db.commit()
         print(f"Seed complete: {added} added, {updated} updated, {len(SEED_TICKERS)} total.")

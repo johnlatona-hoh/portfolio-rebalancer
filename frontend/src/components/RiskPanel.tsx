@@ -25,6 +25,10 @@ function fmt1(n: number) {
   return n.toFixed(1) + "%";
 }
 
+function fmtFee(n: number) {
+  return n.toFixed(2) + "%";
+}
+
 interface Chip {
   label: string;
   value: string;
@@ -42,8 +46,8 @@ function MetricChip({ label, value, subtitle, color }: Chip) {
   );
 }
 
-type AccountSortKey = keyof Pick<AccountRisk, "account_name" | "value" | "expected_return_pct" | "volatility_pct" | "max_drawdown_pct">;
-type HoldingSortKey = keyof Pick<HoldingRisk, "ticker" | "account_name" | "current_value" | "portfolio_pct" | "account_pct" | "expected_return_pct" | "volatility_pct" | "max_drawdown_pct">;
+type AccountSortKey = keyof Pick<AccountRisk, "account_name" | "value" | "expected_return_pct" | "volatility_pct" | "max_drawdown_pct" | "fee_pct">;
+type HoldingSortKey = keyof Pick<HoldingRisk, "ticker" | "account_name" | "current_value" | "portfolio_pct" | "account_pct" | "expected_return_pct" | "volatility_pct" | "max_drawdown_pct" | "fee_pct">;
 
 function SortTh<K extends string>({ col, label, sort, onSort }: { col: K; label: string; sort: { col: K; dir: SortDir }; onSort: (c: K) => void }) {
   const active = sort.col === col;
@@ -116,6 +120,12 @@ export default function RiskPanel({ risk }: Props) {
       subtitle: "% of portfolio",
       color: riskColor(risk.largest_position_pct, 10, 20, false),
     },
+    {
+      label: "Annual Fees",
+      value: fmtFee(risk.weighted_fee_pct),
+      subtitle: fmtMoney(risk.annual_fee_cost) + "/yr",
+      color: riskColor(risk.weighted_fee_pct, 0.1, 0.4, false),
+    },
   ];
 
   return (
@@ -150,6 +160,7 @@ export default function RiskPanel({ risk }: Props) {
                   <SortTh col="expected_return_pct" label="Exp. Return" sort={acctSort} onSort={toggleAcctSort} />
                   <SortTh col="volatility_pct" label="Volatility" sort={acctSort} onSort={toggleAcctSort} />
                   <SortTh col="max_drawdown_pct" label="Max Drawdown" sort={acctSort} onSort={toggleAcctSort} />
+                  <SortTh col="fee_pct" label="Fees" sort={acctSort} onSort={toggleAcctSort} />
                 </tr>
               </thead>
               <tbody>
@@ -161,6 +172,7 @@ export default function RiskPanel({ risk }: Props) {
                     <td className="py-1.5 px-2" style={{ color: riskColor(a.expected_return_pct, 6, 3, true) }}>{fmt1(a.expected_return_pct)}</td>
                     <td className="py-1.5 px-2" style={{ color: riskColor(a.volatility_pct, 10, 18, false) }}>{fmt1(a.volatility_pct)}</td>
                     <td className="py-1.5 px-2" style={{ color: riskColor(Math.abs(a.max_drawdown_pct), 25, 45, false) }}>{fmt1(a.max_drawdown_pct)}</td>
+                    <td className="py-1.5 px-2" style={{ color: riskColor(a.fee_pct, 0.1, 0.4, false) }}>{fmtFee(a.fee_pct)}<span className="text-muted text-[10px]"> ({fmtMoney(a.annual_fee_cost)})</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -193,6 +205,7 @@ export default function RiskPanel({ risk }: Props) {
                     <SortTh col="expected_return_pct" label="Exp. Return" sort={holdSort} onSort={toggleHoldSort} />
                     <SortTh col="volatility_pct" label="Volatility" sort={holdSort} onSort={toggleHoldSort} />
                     <SortTh col="max_drawdown_pct" label="Max Drawdown" sort={holdSort} onSort={toggleHoldSort} />
+                    <SortTh col="fee_pct" label="Fee" sort={holdSort} onSort={toggleHoldSort} />
                   </tr>
                 </thead>
                 <tbody>
@@ -210,6 +223,7 @@ export default function RiskPanel({ risk }: Props) {
                       <td className="py-1.5 px-2" style={{ color: riskColor(h.expected_return_pct, 6, 3, true) }}>{fmt1(h.expected_return_pct)}</td>
                       <td className="py-1.5 px-2" style={{ color: riskColor(h.volatility_pct, 10, 18, false) }}>{fmt1(h.volatility_pct)}</td>
                       <td className="py-1.5 px-2" style={{ color: riskColor(Math.abs(h.max_drawdown_pct), 25, 45, false) }}>{fmt1(h.max_drawdown_pct)}</td>
+                      <td className="py-1.5 px-2" style={{ color: riskColor(h.fee_pct, 0.1, 0.4, false) }}>{fmtFee(h.fee_pct)}</td>
                     </tr>
                   ))}
                 </tbody>

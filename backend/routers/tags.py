@@ -13,10 +13,15 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 
 
 async def load_tags(db: AsyncSession) -> dict[str, dict]:
-    """Fetch all ticker tags as {ticker: {asset_class, tax_efficiency, name}}."""
+    """Fetch all ticker tags as {ticker: {asset_class, tax_efficiency, name, expense_ratio}}."""
     result = await db.execute(select(TickerTag))
     return {
-        t.ticker: {"asset_class": t.asset_class, "tax_efficiency": t.tax_efficiency, "name": t.name}
+        t.ticker: {
+            "asset_class": t.asset_class,
+            "tax_efficiency": t.tax_efficiency,
+            "name": t.name,
+            "expense_ratio": t.expense_ratio,
+        }
         for t in result.scalars().all()
     }
 
@@ -26,7 +31,8 @@ async def list_tags(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(TickerTag).order_by(TickerTag.ticker))
     return [
         TickerTagSchema(ticker=t.ticker, asset_class=t.asset_class,
-                        tax_efficiency=t.tax_efficiency, name=t.name)
+                        tax_efficiency=t.tax_efficiency, name=t.name,
+                        expense_ratio=t.expense_ratio)
         for t in result.scalars().all()
     ]
 
@@ -44,12 +50,15 @@ async def upsert_tag(tag: TickerTagSchema, db: AsyncSession = Depends(get_db)):
         existing.asset_class = tag.asset_class
         existing.tax_efficiency = tag.tax_efficiency
         existing.name = tag.name
+        existing.expense_ratio = tag.expense_ratio
     else:
         db.add(TickerTag(ticker=ticker, asset_class=tag.asset_class,
-                         tax_efficiency=tag.tax_efficiency, name=tag.name))
+                         tax_efficiency=tag.tax_efficiency, name=tag.name,
+                         expense_ratio=tag.expense_ratio))
     await db.commit()
     return TickerTagSchema(ticker=ticker, asset_class=tag.asset_class,
-                           tax_efficiency=tag.tax_efficiency, name=tag.name)
+                           tax_efficiency=tag.tax_efficiency, name=tag.name,
+                           expense_ratio=tag.expense_ratio)
 
 
 @router.post("/auto", response_model=list[TickerTagSchema])
@@ -65,7 +74,8 @@ async def auto_tag(req: AutoTagRequest, db: AsyncSession = Depends(get_db)):
         existing = await db.get(TickerTag, ticker)
         if existing:
             out.append(TickerTagSchema(ticker=existing.ticker, asset_class=existing.asset_class,
-                                       tax_efficiency=existing.tax_efficiency, name=existing.name))
+                                       tax_efficiency=existing.tax_efficiency, name=existing.name,
+                                       expense_ratio=existing.expense_ratio))
             continue
         asset_class, tax_eff, name = classify_svc.classify(ticker, item.description, item.asset_type)
         db.add(TickerTag(ticker=ticker, asset_class=asset_class, tax_efficiency=tax_eff, name=name))

@@ -13,10 +13,10 @@ interface Props {
  * can treat them. Persists each via POST /tags. Offers a Gemini "Suggest" shortcut. */
 export default function TickerTagEditor({ tickers, onAllResolved }: Props) {
   const [drafts, setDrafts] = useState<
-    Record<string, { asset_class: string; tax_efficiency: TaxEfficiency; name: string }>
+    Record<string, { asset_class: string; tax_efficiency: TaxEfficiency; name: string; expense_ratio: string }>
   >(() =>
     Object.fromEntries(
-      tickers.map((t) => [t, { asset_class: "US Stock", tax_efficiency: "efficient", name: "" }])
+      tickers.map((t) => [t, { asset_class: "US Stock", tax_efficiency: "efficient", name: "", expense_ratio: "" }])
     )
   );
   const [resolved, setResolved] = useState<Set<string>>(new Set());
@@ -34,6 +34,9 @@ export default function TickerTagEditor({ tickers, onAllResolved }: Props) {
           asset_class: suggestion.asset_class,
           tax_efficiency: suggestion.tax_efficiency,
           name: suggestion.name ?? "",
+          ...(suggestion.expense_ratio != null
+            ? { expense_ratio: (suggestion.expense_ratio * 100).toString() }
+            : {}),
         });
       } else {
         alert(`No suggestion available for ${ticker} (AI off or ticker not recognized).`);
@@ -46,7 +49,17 @@ export default function TickerTagEditor({ tickers, onAllResolved }: Props) {
   async function save(ticker: string) {
     setBusy(ticker);
     try {
-      await upsertTag({ ticker, ...drafts[ticker] });
+      const d = drafts[ticker];
+      // Fee field is entered as a percent (e.g. "0.03" = 0.03%); store as a decimal.
+      const feeStr = d.expense_ratio.trim();
+      const expense_ratio = feeStr === "" ? null : parseFloat(feeStr) / 100;
+      await upsertTag({
+        ticker,
+        asset_class: d.asset_class,
+        tax_efficiency: d.tax_efficiency,
+        name: d.name,
+        expense_ratio: Number.isNaN(expense_ratio as number) ? null : expense_ratio,
+      });
       const next = new Set(resolved).add(ticker);
       setResolved(next);
       if (next.size === tickers.length) onAllResolved();
@@ -96,6 +109,20 @@ export default function TickerTagEditor({ tickers, onAllResolved }: Props) {
                 </option>
               ))}
             </select>
+            <span className="flex items-center gap-1">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="fee"
+                value={d.expense_ratio}
+                disabled={done}
+                onChange={(e) => update(t, { expense_ratio: e.target.value })}
+                className="w-16 bg-surface border border-border rounded px-2 py-1 text-sm"
+                title="Annual expense ratio as a percent, e.g. 0.03 for 0.03%. Leave blank to use a class default. Set 0 for individual stocks."
+              />
+              <span className="text-muted text-xs">% fee</span>
+            </span>
             <button
               disabled={done || busy === t}
               onClick={() => suggest(t)}

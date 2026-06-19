@@ -77,6 +77,8 @@ class HoldingRisk(BaseModel):
     expected_return_pct: float   # e.g. 7.0 for US Stock (annual)
     volatility_pct: float        # e.g. 16.0 (annual std dev)
     max_drawdown_pct: float      # e.g. -50.0 (negative, historical worst case)
+    fee_pct: float               # annual expense ratio %, e.g. 0.03
+    annual_fee_cost: float       # value * expense ratio ($/yr)
 
 
 class AccountRisk(BaseModel):
@@ -86,6 +88,8 @@ class AccountRisk(BaseModel):
     expected_return_pct: float
     volatility_pct: float
     max_drawdown_pct: float      # negative
+    fee_pct: float               # value-weighted expense ratio %
+    annual_fee_cost: float       # total $/yr for this account
 
 
 class PortfolioRisk(BaseModel):
@@ -95,6 +99,8 @@ class PortfolioRisk(BaseModel):
     diversification_benefit_pct: float  # % of vol removed by diversification
     largest_position_pct: float
     top5_concentration_pct: float
+    weighted_fee_pct: float             # value-weighted expense ratio % across everything
+    annual_fee_cost: float              # total $/yr across all holdings
     by_account: list[AccountRisk]
     by_holding: list[HoldingRisk]        # sorted by value desc
 
@@ -142,6 +148,7 @@ class TickerTagSchema(BaseModel):
     asset_class: str
     tax_efficiency: TaxEfficiency
     name: str | None = None
+    expense_ratio: float | None = None   # annual decimal, e.g. 0.0003 = 0.03%; None -> class fallback
 
 
 class TickerTagSuggestRequest(BaseModel):

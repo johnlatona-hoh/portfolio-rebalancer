@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Text, Index
+from sqlalchemy import String, DateTime, Text, Index, Float
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -30,6 +30,7 @@ class TickerTag(Base):
     asset_class: Mapped[str] = mapped_column(String, index=True)      # one of ASSET_CLASSES
     tax_efficiency: Mapped[str] = mapped_column(String)              # efficient | inefficient | neutral
     name: Mapped[str | None] = mapped_column(String, nullable=True)  # human label, e.g. "Vanguard Total Stock"
+    expense_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)  # annual decimal, e.g. 0.0003 = 0.03%; None -> class fallback
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )

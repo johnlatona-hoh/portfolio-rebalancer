@@ -119,3 +119,19 @@ def get_correlation(a: str, b: str) -> float:
     if a == b:
         return 1.0
     return CORRELATION.get((a, b), CORRELATION.get((b, a), 0.0))
+
+
+# Per-asset-class fallback expense ratio (annual decimal) used when a ticker has no
+# explicit expense_ratio on its TickerTag (e.g. an auto-classified unknown fund).
+# Conservative fund-like estimates; individual stocks should be overridden to 0.
+FEE_ASSUMPTIONS: dict[str, float] = {
+    "US Stock":           0.0020,
+    "International":       0.0030,
+    "Taxable Bond":       0.0020,
+    "Muni Bond":          0.0025,
+    "REITs":              0.0030,
+    "Cash":               0.0030,
+    "Gold & Commodities": 0.0040,
+    "Crypto":             0.0050,
+    "Other Alternatives": 0.0085,
+}

@@ -67,6 +67,8 @@ export interface HoldingRisk {
   expected_return_pct: number;
   volatility_pct: number;
   max_drawdown_pct: number;  // negative, e.g. -50.0
+  fee_pct: number;           // annual expense ratio %, e.g. 0.03
+  annual_fee_cost: number;   // $/yr
 }
 
 export interface AccountRisk {
@@ -76,6 +78,8 @@ export interface AccountRisk {
   expected_return_pct: number;
   volatility_pct: number;
   max_drawdown_pct: number;  // negative
+  fee_pct: number;           // value-weighted expense ratio %
+  annual_fee_cost: number;   // $/yr
 }
 
 export interface PortfolioRisk {
@@ -85,6 +89,8 @@ export interface PortfolioRisk {
   diversification_benefit_pct: number;  // % of vol removed by diversification
   largest_position_pct: number;
   top5_concentration_pct: number;
+  weighted_fee_pct: number;             // value-weighted expense ratio % across everything
+  annual_fee_cost: number;              // total $/yr across all holdings
   by_account: AccountRisk[];
   by_holding: HoldingRisk[];
 }
@@ -119,6 +125,7 @@ export interface TickerTag {
   asset_class: string;
   tax_efficiency: TaxEfficiency;
   name: string | null;
+  expense_ratio?: number | null;  // annual decimal, e.g. 0.0003 = 0.03%; null -> class fallback
 }
 
 export interface SnapshotMeta {

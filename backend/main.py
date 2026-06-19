@@ -14,6 +14,7 @@ async def run_migrations():
     migrations: list[str] = [
         "ALTER TABLE rebalancer_snapshots ADD COLUMN IF NOT EXISTS user_id VARCHAR",
         "ALTER TABLE rebalancer_snapshots ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT ''",
+        "ALTER TABLE rebalancer_ticker_tags ADD COLUMN IF NOT EXISTS expense_ratio DOUBLE PRECISION",
     ]
     async with engine.begin() as conn:
         for sql in migrations:
