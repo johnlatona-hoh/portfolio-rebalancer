@@ -28,10 +28,12 @@ const BLANK: Holding = {
   current_value: 0,
 };
 
-/**
- * Manual what-if: edit a copy of the holdings (change values, add hypotheticals) and
- * compare the resulting allocation + projection against the current portfolio.
- */
+function derivedValue(h: Holding): number {
+  // If shares and price are both set, derive value; otherwise use current_value.
+  return h.quantity > 0 && h.current_value > 0 ? h.current_value : h.current_value;
+}
+
+/** Manual what-if: edit holdings, compare resulting allocation + projection. */
 export default function ScenarioPanel({ baseHoldings, targets, horizonMonths, current }: Props) {
   const [holdings, setHoldings] = useState<Holding[]>(() =>
     baseHoldings.map((h) => ({ ...h }))
@@ -41,11 +43,20 @@ export default function ScenarioPanel({ baseHoldings, targets, horizonMonths, cu
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const editValue = (i: number, value: number) =>
-    setHoldings((hs) => hs.map((h, j) => (j === i ? { ...h, current_value: value } : h)));
-
   const editField = (i: number, patch: Partial<Holding>) =>
     setHoldings((hs) => hs.map((h, j) => (j === i ? { ...h, ...patch } : h)));
+
+  // When shares change, auto-derive value from shares × (price = value/quantity before edit)
+  const editShares = (i: number, qty: number) => {
+    setHoldings((hs) =>
+      hs.map((h, j) => {
+        if (j !== i) return h;
+        const price = h.quantity > 0 ? h.current_value / h.quantity : 0;
+        const value = price > 0 ? qty * price : h.current_value;
+        return { ...h, quantity: qty, current_value: value };
+      })
+    );
+  };
 
   const addRow = () => setHoldings((hs) => [...hs, { ...BLANK }]);
   const removeRow = (i: number) => setHoldings((hs) => hs.filter((_, j) => j !== i));
@@ -59,12 +70,25 @@ export default function ScenarioPanel({ baseHoldings, targets, horizonMonths, cu
       setResult(res);
       const valueByClass = Object.fromEntries(res.blended.map((b) => [b.asset_class, b.value]));
       setProjection(await projectPortfolio(valueByClass, horizonMonths));
-    } catch (e: any) {
-      setErr(e?.response?.data?.detail ?? "Scenario analysis failed.");
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      setErr(err?.response?.data?.detail ?? "Scenario analysis failed.");
     } finally {
       setBusy(false);
     }
   }
+
+  // Group holdings by account for spacer rows
+  const accountOrder: string[] = [];
+  const byAccount: Record<string, number[]> = {};
+  holdings.forEach((h, i) => {
+    if (!byAccount[h.account_name]) {
+      byAccount[h.account_name] = [];
+      accountOrder.push(h.account_name);
+    }
+    byAccount[h.account_name].push(i);
+  });
+  const totalValue = holdings.reduce((s, h) => s + h.current_value, 0);
 
   return (
     <div className="space-y-4">
@@ -87,63 +111,114 @@ export default function ScenarioPanel({ baseHoldings, targets, horizonMonths, cu
         </div>
       </div>
 
-      {/* editable holdings */}
-      <div className="max-h-56 overflow-auto rounded border border-border">
+      {/* editable holdings — tall scroll area */}
+      <div className="max-h-[32rem] overflow-auto rounded border border-border">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-card">
-            <tr className="text-left text-muted">
+          <thead className="sticky top-0 bg-card z-10">
+            <tr className="text-left text-muted border-b border-border">
               <th className="p-2">Account</th>
-              <th className="p-2">Type</th>
-              <th className="p-2">Ticker</th>
-              <th className="p-2 text-right">Value</th>
-              <th className="p-2"></th>
+              <th className="p-2 w-28">Type</th>
+              <th className="p-2 w-20">Ticker</th>
+              <th className="p-2 text-right w-24">Shares</th>
+              <th className="p-2 text-right w-24">Price</th>
+              <th className="p-2 text-right w-28">Value</th>
+              <th className="p-2 text-right w-20">% Acct</th>
+              <th className="p-2 text-right w-20">% Total</th>
+              <th className="p-2 w-6" />
             </tr>
           </thead>
           <tbody>
-            {holdings.map((h, i) => (
-              <tr key={i} className="border-t border-border/50">
-                <td className="p-1">
-                  <input
-                    value={h.account_name}
-                    onChange={(e) => editField(i, { account_name: e.target.value })}
-                    className="w-28 bg-surface border border-border rounded px-1 py-0.5"
-                  />
-                </td>
-                <td className="p-1">
-                  <select
-                    value={h.account_type}
-                    onChange={(e) => editField(i, { account_type: e.target.value as AccountType })}
-                    className="bg-surface border border-border rounded px-1 py-0.5"
-                  >
-                    {Object.entries(ACCOUNT_TYPE_LABELS).map(([v, l]) => (
-                      <option key={v} value={v}>
-                        {l}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="p-1">
-                  <input
-                    value={h.ticker}
-                    onChange={(e) => editField(i, { ticker: e.target.value.toUpperCase() })}
-                    className="w-20 bg-surface border border-border rounded px-1 py-0.5 font-mono"
-                  />
-                </td>
-                <td className="p-1 text-right">
-                  <input
-                    type="number"
-                    value={h.current_value}
-                    onChange={(e) => editValue(i, Number(e.target.value))}
-                    className="w-24 bg-surface border border-border rounded px-1 py-0.5 text-right"
-                  />
-                </td>
-                <td className="p-1">
-                  <button onClick={() => removeRow(i)} className="text-bad px-1">
-                    ✕
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {accountOrder.map((acctName) => {
+              const indices = byAccount[acctName] ?? [];
+              const acctTotal = indices.reduce((s, i) => s + holdings[i].current_value, 0);
+              return (
+                <>
+                  {/* account spacer */}
+                  <tr key={`hdr-${acctName}`} className="bg-surface/60">
+                    <td colSpan={9} className="px-3 py-1 font-medium text-muted">
+                      {acctName || "(unnamed)"}
+                    </td>
+                  </tr>
+
+                  {indices.map((i) => {
+                    const h = holdings[i];
+                    const p = h.quantity > 0 ? h.current_value / h.quantity : null;
+                    const acctPct = acctTotal > 0 ? (h.current_value / acctTotal) * 100 : 0;
+                    const totPct = totalValue > 0 ? (h.current_value / totalValue) * 100 : 0;
+                    return (
+                      <tr key={i} className="border-t border-border/40">
+                        <td className="p-1">
+                          <input
+                            value={h.account_name}
+                            onChange={(e) => editField(i, { account_name: e.target.value })}
+                            className="w-28 bg-surface border border-border rounded px-1 py-0.5"
+                          />
+                        </td>
+                        <td className="p-1">
+                          <select
+                            value={h.account_type}
+                            onChange={(e) =>
+                              editField(i, { account_type: e.target.value as AccountType })
+                            }
+                            className="bg-surface border border-border rounded px-1 py-0.5 text-xs w-full"
+                          >
+                            {Object.entries(ACCOUNT_TYPE_LABELS).map(([v, l]) => (
+                              <option key={v} value={v}>
+                                {l}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-1">
+                          <input
+                            value={h.ticker}
+                            onChange={(e) =>
+                              editField(i, { ticker: e.target.value.toUpperCase() })
+                            }
+                            className="w-16 bg-surface border border-border rounded px-1 py-0.5 font-mono"
+                          />
+                        </td>
+                        <td className="p-1 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            value={h.quantity || ""}
+                            onChange={(e) => editShares(i, Number(e.target.value))}
+                            className="w-20 bg-surface border border-border rounded px-1 py-0.5 text-right"
+                          />
+                        </td>
+                        <td className="p-1 text-right text-muted">
+                          {p != null ? `$${p.toFixed(2)}` : "—"}
+                        </td>
+                        <td className="p-1 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            value={h.current_value || ""}
+                            onChange={(e) => editField(i, { current_value: Number(e.target.value) })}
+                            className="w-24 bg-surface border border-border rounded px-1 py-0.5 text-right"
+                          />
+                        </td>
+                        <td className="p-1 text-right text-muted">{acctPct.toFixed(1)}%</td>
+                        <td className="p-1 text-right text-muted">{totPct.toFixed(1)}%</td>
+                        <td className="p-1">
+                          <button onClick={() => removeRow(i)} className="text-bad px-1">
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* account subtotal */}
+                  <tr key={`sub-${acctName}`} className="border-t border-border/60 bg-surface/30">
+                    <td colSpan={5} className="p-1 text-right text-muted pr-2">Subtotal</td>
+                    <td className="p-1 text-right font-medium">{fmtMoney(acctTotal)}</td>
+                    <td colSpan={3} />
+                  </tr>
+                </>
+              );
+            })}
           </tbody>
         </table>
       </div>

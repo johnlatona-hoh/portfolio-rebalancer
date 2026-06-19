@@ -70,6 +70,41 @@ async def portfolio_insights(summary: dict) -> list[str] | None:
     return None
 
 
+async def berger_tips(summary: dict) -> list[dict] | None:
+    """Generate 3-4 Rob Berger-style practical investing tips tailored to this portfolio.
+    Each tip has a title, body, and optional advantage/disadvantage note. Returns None when
+    GEMINI_API_KEY is absent."""
+    if not settings.GEMINI_API_KEY:
+        return None
+
+    try:
+        client = _client()
+        prompt = (
+            "You are writing in the voice of Rob Berger -- a pragmatic, plain-English personal "
+            "finance educator who champions low-cost index funds, simplicity, the 3-fund portfolio, "
+            "high savings rate, and avoiding market timing. You are given an anonymized portfolio "
+            "summary as JSON. Write 3-4 actionable, specific tips tailored to this portfolio.\n\n"
+            "Each tip must include:\n"
+            "  - title: short phrase (5-10 words)\n"
+            "  - body: 1-3 sentences, concrete and portfolio-specific, plain English\n"
+            "  - advantage: one-line upside\n"
+            "  - disadvantage: one-line trade-off or caveat\n\n"
+            f"PORTFOLIO SUMMARY:\n{json.dumps(summary, indent=2)}\n\n"
+            "Respond ONLY with valid JSON: an array of objects with keys title, body, advantage, "
+            "disadvantage. No markdown, no preamble."
+        )
+        response = await _generate_with_retry(client, prompt)
+        text = (response.text or "").strip()
+        start = text.find("[")
+        end = text.rfind("]") + 1
+        if start >= 0 and end > start:
+            tips = json.loads(text[start:end])
+            return [t for t in tips if isinstance(t, dict) and "title" in t and "body" in t]
+    except Exception:
+        pass
+    return None
+
+
 async def suggest_ticker_tag(ticker: str) -> dict | None:
     """Best-guess asset_class + tax_efficiency for an unknown ticker. Guarded by an
     UNKNOWN sentinel so the model returns None rather than hallucinating for tickers

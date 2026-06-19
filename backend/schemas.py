@@ -22,6 +22,8 @@ class AnalyzeRequest(BaseModel):
     holdings: list[Holding]
     # target percentages keyed by asset class, e.g. {"US Stock": 40, "Bond": 25, ...}
     targets: dict[str, float]
+    # 0..1 slider: 0 = best allocation (default), 1 = avoid all taxable realized gains.
+    gain_aversion: float = 0.0
 
 
 # ---------- Allocation + trades output ----------
@@ -32,7 +34,9 @@ class ClassAllocation(BaseModel):
     value: float
     pct: float
     target_pct: float
-    delta_value: float  # +buy / -sell to reach target (blended)
+    delta_value: float          # +buy / -sell to reach target (blended)
+    post_pct: float = 0.0       # blended pct after applying the trade plan
+    drift_pct: float = 0.0      # post_pct - target_pct (residual misalignment)
 
 
 class AccountAllocation(BaseModel):
@@ -50,13 +54,17 @@ class Trade(BaseModel):
     ticker: str | None = None
     amount: float
     tax_note: str
+    est_gain: float = 0.0   # estimated realized gain (taxable SELLs only)
 
 
 class LocationGrade(BaseModel):
-    grade: str                  # A-F
+    score: int                  # 1-10, 10 = best
     misplaced_count: int
     total_holdings: int
-    notes: list[str]
+    inefficient_value: float
+    misplaced_value: float
+    reasons: list[str]
+    methodology: str
 
 
 class AnalyzeResponse(BaseModel):
@@ -65,6 +73,8 @@ class AnalyzeResponse(BaseModel):
     by_account: list[AccountAllocation]
     trades: list[Trade]
     grade: LocationGrade
+    realized_gains: float = 0.0       # total estimated gains realized by the trade plan
+    max_drift_pct: float = 0.0        # largest post-plan deviation from any target (pct pts)
     unknown_tickers: list[str]  # tickers with no tag - caller should classify
 
 
@@ -155,3 +165,18 @@ class AdvisorRequest(BaseModel):
 
 class AdvisorResponse(BaseModel):
     insights: list[str]
+
+
+class BergerTipsRequest(BaseModel):
+    summary: dict   # same anonymized portfolio summary as AdvisorRequest
+
+
+class BergerTip(BaseModel):
+    title: str
+    body: str
+    advantage: str = ""
+    disadvantage: str = ""
+
+
+class BergerTipsResponse(BaseModel):
+    tips: list[BergerTip]

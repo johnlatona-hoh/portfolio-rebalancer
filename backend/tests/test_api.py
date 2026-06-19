@@ -58,7 +58,7 @@ async def test_analyze_endpoint_returns_trades_and_grade(client):
     assert r.status_code == 200
     data = r.json()
     assert data["total_value"] == 100000
-    assert data["grade"]["grade"] == "A"  # everything well placed
+    assert data["grade"]["score"] == 10  # everything well placed
     # overweight US Stock should produce a sell somewhere
     assert any(t["asset_class"] == "US Stock" and t["action"] == "SELL" for t in data["trades"])
 
@@ -88,7 +88,10 @@ async def test_project_endpoint_returns_points(client):
 
 
 @pytest.mark.asyncio
-async def test_advisor_no_ops_without_key(client):
+async def test_advisor_no_ops_without_key(client, monkeypatch):
+    # force the no-key path even if a real key is set in the environment
+    from config import settings
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
     r = await client.post("/advisor/insights", json={"summary": {"foo": "bar"}})
     assert r.status_code == 200
     assert r.json()["insights"] == []  # no GEMINI_API_KEY -> empty, no crash

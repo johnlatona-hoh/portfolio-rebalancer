@@ -106,6 +106,17 @@ def _ticker_for(holdings, account_name, cls, tags):
     return None
 
 
+def _est_gain(amount: float, h: dict) -> float:
+    """Capital gain realized by selling `amount` of holding `h`, assuming proportional
+    cost basis (no specific-lot ID). Cash and underwater positions return 0."""
+    v = h.get("current_value", 0) or 0
+    if v <= 0:
+        return 0.0
+    cb = h.get("cost_basis", 0) or 0
+    gain_ratio = max(0.0, (v - cb) / v)
+    return round(amount * gain_ratio, 2)
+
+
 def target_composition(holdings, targets, tags, total):
     """Decide what each account should hold, by asset class, keeping each account's
     total value fixed (no inter-account transfers) and honoring asset-location
@@ -136,96 +147,236 @@ def target_composition(holdings, targets, tags, total):
     return comp
 
 
-def plan_trades(holdings, targets, tags, total):
-    """Produce an execution-ready, tax-aware BUY/SELL list. Each account is rebalanced
-    in place toward its target composition, so an account's buys are funded by its own
-    sells (cash-neutral per account; never over-allocated)."""
-    comp = target_composition(holdings, targets, tags, total)
-    accounts = account_breakdown(holdings, tags)
-    trades = []
+def _plan_account(holdings, name, atype, current, target, tags, gain_budget=None):
+    """Rebalance one account toward its target composition.
 
-    for a in accounts:
-        name, atype = a["account_name"], a["account_type"]
-        current = a["by_class"]
-        target = comp.get(name, {})
-        for cls in sorted(set(current) | set(target)):
-            diff = round(target.get(cls, 0.0) - current.get(cls, 0.0), 2)
-            if abs(diff) < 0.01:
-                continue
-            if diff > 0:
-                trades.append({
-                    "account_name": name, "account_type": atype, "action": "BUY",
-                    "asset_class": cls, "ticker": None, "amount": diff,
-                    "tax_note": _TAX_NOTE_BUY[atype],
-                })
-            else:
+    Returns (trades, realized_gains, remaining_budget). For taxable accounts a
+    `gain_budget` may cap how much realized gain SELLs are allowed to generate; once
+    exhausted, any further reduction is skipped (drift) and buys are reduced to keep
+    the account cash-neutral.
+    """
+    trades = []
+    realized = 0.0
+
+    # First, raise cash by selling overweight classes.
+    proceeds = 0.0
+    class_overs = {cls: current.get(cls, 0.0) - target.get(cls, 0.0)
+                   for cls in set(current) | set(target)
+                   if current.get(cls, 0.0) - target.get(cls, 0.0) > 0.01}
+
+    if atype == "taxable":
+        # Holding-granular: sell within each overweight class, lowest gain-ratio first.
+        for cls, owe in sorted(class_overs.items(), key=lambda kv: -kv[1]):
+            held = [h for h in holdings
+                    if h["account_name"] == name and _class_of(h["ticker"], tags) == cls]
+            held.sort(key=lambda h: (max(0.0, (h["current_value"] - (h["cost_basis"] or 0))
+                                          / max(h["current_value"], 1e-9)),
+                                     -h["current_value"]))
+            need = owe
+            for h in held:
+                if need <= 0.01:
+                    break
+                take = min(h["current_value"], need)
+                est = _est_gain(take, h)
+                # If a gain budget is set and this sell would breach it, scale down.
+                if gain_budget is not None and est > 0:
+                    if gain_budget <= 0.01:
+                        continue  # no budget left for any gain-bearing sell
+                    if est > gain_budget:
+                        # Scale the sell down so its est_gain == remaining budget.
+                        gain_ratio = est / take if take > 0 else 0
+                        if gain_ratio > 0:
+                            take = round(gain_budget / gain_ratio, 2)
+                            est = _est_gain(take, h)
+                if take <= 0.01:
+                    continue
                 trades.append({
                     "account_name": name, "account_type": atype, "action": "SELL",
-                    "asset_class": cls, "ticker": _ticker_for(holdings, name, cls, tags),
-                    "amount": -diff, "tax_note": _sell_note(cls, atype),
+                    "asset_class": cls, "ticker": h["ticker"],
+                    "amount": round(take, 2), "est_gain": est,
+                    "tax_note": _sell_note(cls, atype),
                 })
-    return trades
+                proceeds += take
+                realized += est
+                if gain_budget is not None:
+                    gain_budget = max(0.0, gain_budget - est)
+                need -= take
+    else:
+        # Tax-advantaged: no gains realized, class-granular is fine.
+        for cls, owe in class_overs.items():
+            trades.append({
+                "account_name": name, "account_type": atype, "action": "SELL",
+                "asset_class": cls, "ticker": _ticker_for(holdings, name, cls, tags),
+                "amount": round(owe, 2), "est_gain": 0.0,
+                "tax_note": _sell_note(cls, atype),
+            })
+            proceeds += owe
+
+    # Then deploy proceeds into underweight classes (preserve target order via PLACEMENT).
+    class_unders = [(cls, target.get(cls, 0.0) - current.get(cls, 0.0))
+                    for cls in set(current) | set(target)
+                    if target.get(cls, 0.0) - current.get(cls, 0.0) > 0.01]
+    pref = PLACEMENT.get(atype, ASSET_CLASSES)
+    pref_index = {c: i for i, c in enumerate(pref)}
+    class_unders.sort(key=lambda kv: pref_index.get(kv[0], 99))
+
+    for cls, want in class_unders:
+        if proceeds <= 0.01:
+            break
+        spend = round(min(proceeds, want), 2)
+        if spend <= 0.01:
+            continue
+        trades.append({
+            "account_name": name, "account_type": atype, "action": "BUY",
+            "asset_class": cls, "ticker": None, "amount": spend,
+            "est_gain": 0.0, "tax_note": _TAX_NOTE_BUY[atype],
+        })
+        proceeds -= spend
+
+    return trades, round(realized, 2)
+
+
+def plan_trades(holdings, targets, tags, total, gain_aversion: float = 0.0):
+    """Produce an execution-ready, tax-aware BUY/SELL list. Each account is rebalanced
+    in place toward its target composition, so an account's buys are funded by its own
+    sells (cash-neutral per account; never over-allocated).
+
+    `gain_aversion` (0..1): 0 ignores realized gains (best-allocation plan); 1 forbids
+    realizing any gains in taxable accounts. Intermediate values cap realized gains at
+    `(1 - g) * G_full` where G_full is the unconstrained gains figure.
+    """
+    g = max(0.0, min(1.0, float(gain_aversion or 0.0)))
+    comp = target_composition(holdings, targets, tags, total)
+    accounts = account_breakdown(holdings, tags)
+
+    # Pre-pass at g=0 to size the gain budget for the constrained pass.
+    G_full = 0.0
+    if g > 0:
+        for a in accounts:
+            if a["account_type"] != "taxable":
+                continue
+            _, realized = _plan_account(
+                holdings, a["account_name"], a["account_type"],
+                a["by_class"], comp.get(a["account_name"], {}), tags, gain_budget=None,
+            )
+            G_full += realized
+    budget = max(0.0, (1 - g) * G_full) if g > 0 else None
+
+    all_trades = []
+    realized_total = 0.0
+    for a in accounts:
+        b = budget if a["account_type"] == "taxable" else None
+        trades, realized = _plan_account(
+            holdings, a["account_name"], a["account_type"],
+            a["by_class"], comp.get(a["account_name"], {}), tags, gain_budget=b,
+        )
+        all_trades.extend(trades)
+        realized_total += realized
+        if b is not None:
+            budget = max(0.0, budget - realized)
+    return all_trades, round(realized_total, 2)
 
 
 def location_grade(holdings, tags):
-    """Grade asset location. A holding is misplaced when a tax-inefficient asset
-    sits in a taxable account (its income/distributions are taxed at ordinary rates
-    that a tax-deferred account would have sheltered)."""
-    misplaced = []
-    total = len(holdings)
+    """Value-weighted asset-location score on a 1-10 scale (10 = best).
+
+    A holding is "misplaced" when a tax-inefficient asset (taxable bonds, REITs, etc.)
+    sits in a taxable account, where its ordinary-income distributions are taxed each
+    year instead of being sheltered. The score reflects the share of inefficient DOLLARS
+    that are correctly located, not a count of holdings.
+
+    score = 10 * (inefficient $ correctly placed / total inefficient $); 10 when there
+    are no inefficient assets to worry about; floored at 1.
+    """
+    misplaced_value = 0.0
+    inefficient_value = 0.0
+    misplaced: list[dict] = []
+    notes: list[str] = []
+
     for h in holdings:
         tag = tags.get(h["ticker"])
-        if not tag:
+        if not tag or tag["tax_efficiency"] != "inefficient":
             continue
-        if tag["tax_efficiency"] == "inefficient" and h["account_type"] == "taxable":
-            misplaced.append(
-                f"{h['ticker']} ({tag['asset_class']}) is in a taxable account - "
-                f"consider moving it to a tax-deferred account."
-            )
+        v = h["current_value"]
+        inefficient_value += v
+        if h["account_type"] == "taxable":
+            misplaced_value += v
+            misplaced.append({"ticker": h["ticker"], "asset_class": tag["asset_class"], "value": v})
 
-    n = len(misplaced)
-    ratio = (n / total) if total else 0.0
-    if n == 0:
-        letter = "A"
-    elif ratio <= 0.1:
-        letter = "B"
-    elif ratio <= 0.25:
-        letter = "C"
-    elif ratio <= 0.5:
-        letter = "D"
+    if inefficient_value <= 0:
+        score = 10
     else:
-        letter = "F"
+        well_placed_ratio = max(0.0, (inefficient_value - misplaced_value) / inefficient_value)
+        score = max(1, min(10, int(round(10 * well_placed_ratio))))
+
+    # Build human reasons, biggest offenders first.
+    misplaced.sort(key=lambda x: -x["value"])
+    for m in misplaced[:5]:
+        notes.append(
+            f"${m['value']:,.0f} {m['ticker']} ({m['asset_class']}) is in a taxable account - "
+            f"consider moving it to a tax-deferred account."
+        )
+    if inefficient_value > 0:
+        correct = inefficient_value - misplaced_value
+        notes.append(
+            f"${correct:,.0f} of ${inefficient_value:,.0f} tax-inefficient assets "
+            f"({(correct / inefficient_value) * 100:.0f}%) are correctly in tax-advantaged accounts."
+        )
+
+    methodology = (
+        "Score is value-weighted on a 1-10 scale (10 = best). It measures the share of "
+        "tax-inefficient dollars (taxable bonds, REITs, etc.) sitting in tax-advantaged "
+        "accounts. A holding is 'misplaced' when an inefficient asset sits in a taxable "
+        "account, where its ordinary-income distributions are taxed each year. Munis, broad "
+        "equity index funds, and cash are not penalized."
+    )
 
     return {
-        "grade": letter,
-        "misplaced_count": n,
-        "total_holdings": total,
-        "notes": misplaced,
+        "score": score,
+        "misplaced_count": len(misplaced),
+        "total_holdings": len(holdings),
+        "inefficient_value": round(inefficient_value, 2),
+        "misplaced_value": round(misplaced_value, 2),
+        "reasons": notes,
+        "methodology": methodology,
     }
 
 
-def analyze(holdings, targets, tags):
-    """Top-level orchestration used by the /analyze router."""
+def analyze(holdings, targets, tags, gain_aversion: float = 0.0):
+    """Top-level orchestration used by the /analyze router. `gain_aversion` (0..1)
+    slides between best-allocation (0) and zero-realized-gains (1) in taxable accounts."""
     blended, total = roll_up(holdings, tags)
     deltas = compute_deltas(blended, total, targets)
-    trades = plan_trades(holdings, targets, tags, total)
+    trades, realized_gains = plan_trades(holdings, targets, tags, total, gain_aversion)
     grade = location_grade(holdings, tags)
+
+    # Compute post-plan blended allocation (drift): apply the trades to the current values.
+    post = {c: blended.get(c, 0.0) for c in ASSET_CLASSES}
+    for t in trades:
+        if t["asset_class"] in post:
+            sign = 1 if t["action"] == "BUY" else -1
+            post[t["asset_class"]] = post.get(t["asset_class"], 0.0) + sign * t["amount"]
 
     blended_view = []
     for cls in ASSET_CLASSES:
         val = blended.get(cls, 0.0)
         if val == 0 and targets.get(cls, 0) == 0:
             continue
+        post_pct = (post.get(cls, 0.0) / total * 100) if total else 0.0
+        tgt = float(targets.get(cls, 0.0))
         blended_view.append({
             "asset_class": cls,
             "group": parent_of(cls),
             "value": round(val, 2),
             "pct": round((val / total * 100) if total else 0.0, 2),
-            "target_pct": float(targets.get(cls, 0.0)),
+            "target_pct": tgt,
             "delta_value": round(deltas.get(cls, 0.0), 2),
+            "post_pct": round(post_pct, 2),
+            "drift_pct": round(post_pct - tgt, 2),
         })
 
     unknown = sorted({h["ticker"] for h in holdings if h["ticker"] not in tags})
+    max_drift = max((abs(b["drift_pct"]) for b in blended_view), default=0.0)
 
     return {
         "total_value": round(total, 2),
@@ -233,5 +384,7 @@ def analyze(holdings, targets, tags):
         "by_account": account_breakdown(holdings, tags),
         "trades": trades,
         "grade": grade,
+        "realized_gains": realized_gains,
+        "max_drift_pct": round(max_drift, 2),
         "unknown_tickers": unknown,
     }

@@ -20,7 +20,7 @@ function Navbar() {
   return (
     <nav className="border-b border-border bg-card">
       <div className="max-w-screen-xl mx-auto px-4 py-3 flex items-center gap-2">
-        <span className="font-semibold mr-4">Latona Portfolio Rebalancer</span>
+        <span className="font-semibold mr-4">Portfolio Rebalancer</span>
         <NavLink to="/" className={link} end>
           Setup
         </NavLink>

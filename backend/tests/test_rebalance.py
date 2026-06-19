@@ -157,7 +157,7 @@ def test_muni_bonds_are_not_churned_out_of_taxable():
     assert muni_sells == [], f"munis should not be sold, got {muni_sells}"
 
 
-# ---------- location_grade ----------
+# ---------- location_grade (1-10 score) ----------
 
 def test_grade_flags_inefficient_asset_in_taxable_account():
     holdings = [
@@ -168,10 +168,11 @@ def test_grade_flags_inefficient_asset_in_taxable_account():
 
     assert grade["misplaced_count"] == 1
     assert grade["total_holdings"] == 2
-    assert any("VNQ" in n for n in grade["notes"])
+    assert any("VNQ" in r for r in grade["reasons"])
+    assert grade["methodology"]  # non-empty explanation
 
 
-def test_grade_is_A_when_everything_well_placed():
+def test_grade_is_10_when_everything_well_placed():
     holdings = [
         _holding("Brokerage", "taxable", "VTI", 10000),  # efficient equity in taxable = good
         _holding("IRA", "tax_deferred", "BND", 10000),   # inefficient bond in tax-deferred = good
@@ -179,4 +180,84 @@ def test_grade_is_A_when_everything_well_placed():
     grade = rebalance.location_grade(holdings, _tags())
 
     assert grade["misplaced_count"] == 0
-    assert grade["grade"] == "A"
+    assert grade["score"] == 10
+
+
+def test_grade_score_is_value_weighted():
+    """Score reflects the share of inefficient DOLLARS correctly located, not a count."""
+    holdings = [
+        _holding("Brokerage", "taxable", "VNQ", 10000),   # 10k inefficient misplaced
+        _holding("IRA", "tax_deferred", "BND", 90000),    # 90k inefficient correct
+    ]
+    grade = rebalance.location_grade(holdings, _tags())
+    # 90k of 100k inefficient is well placed -> score 9
+    assert grade["inefficient_value"] == 100000
+    assert grade["misplaced_value"] == 10000
+    assert grade["score"] == 9
+
+
+def test_grade_is_10_with_no_inefficient_assets():
+    holdings = [_holding("Brokerage", "taxable", "VTI", 10000)]
+    assert rebalance.location_grade(holdings, _tags())["score"] == 10
+
+
+# ---------- strategy slider (gain_aversion) ----------
+
+def _appreciated(account, account_type, ticker, value, cost):
+    """A holding with explicit cost basis so the engine can compute realized gains."""
+    return {
+        "account_name": account, "account_type": account_type, "ticker": ticker,
+        "quantity": 1.0, "cost_basis": cost, "current_value": value,
+    }
+
+
+def test_gain_aversion_zero_matches_default_behavior():
+    """At g=0 the trade plan should match the unconstrained engine output (no regression)."""
+    holdings = [
+        _appreciated("Brokerage", "taxable", "VTI", 100000, 50000),   # 50k unrealized gain
+        _appreciated("Brokerage", "taxable", "VNQ", 30000, 30000),
+        _appreciated("IRA", "tax_deferred", "BND", 50000, 50000),
+    ]
+    targets = {"US Stock": 30, "Taxable Bond": 60, "REITs": 10}
+    default = rebalance.analyze(holdings, targets, _tags())
+    zero = rebalance.analyze(holdings, targets, _tags(), gain_aversion=0.0)
+    assert default["trades"] == zero["trades"]
+
+
+def test_gain_aversion_one_avoids_selling_appreciated_taxable_holdings():
+    """At g=1 the engine must not SELL appreciated taxable holdings (zero realized gains)."""
+    holdings = [
+        _appreciated("Brokerage", "taxable", "VTI", 100000, 50000),   # appreciated
+        _appreciated("Brokerage", "taxable", "VNQ", 30000, 30000),    # no gain
+        # IRA has imbalanced sleeves so tax-advantaged rebalancing must still fire.
+        _appreciated("IRA", "tax_deferred", "BND", 30000, 30000),
+        _appreciated("IRA", "tax_deferred", "VTI", 70000, 70000),
+    ]
+    targets = {"US Stock": 50, "Taxable Bond": 40, "REITs": 10}
+    result = rebalance.analyze(holdings, targets, _tags(), gain_aversion=1.0)
+
+    appreciated_sells = [
+        t for t in result["trades"]
+        if t["action"] == "SELL" and t["account_type"] == "taxable"
+        and t.get("est_gain", 0) > 0.01
+    ]
+    assert appreciated_sells == [], f"should not realize gains, got {appreciated_sells}"
+    assert result["realized_gains"] == 0
+    # tax-advantaged rebalancing should still proceed (IRA needs to rotate VTI -> BND)
+    assert any(t["account_type"] == "tax_deferred" for t in result["trades"])
+
+
+def test_gain_aversion_reports_realized_gains_and_est_gain():
+    holdings = [
+        _appreciated("Brokerage", "taxable", "VTI", 100000, 50000),   # 50% gain ratio
+        _appreciated("IRA", "tax_deferred", "BND", 50000, 50000),
+    ]
+    targets = {"US Stock": 50, "Taxable Bond": 50}
+    result = rebalance.analyze(holdings, targets, _tags(), gain_aversion=0.0)
+    tax_sells = [t for t in result["trades"]
+                 if t["action"] == "SELL" and t["account_type"] == "taxable"]
+    if tax_sells:
+        # est_gain should be amount * (1 - cost/value) = amount * 0.5 for VTI
+        t = tax_sells[0]
+        assert "est_gain" in t and abs(t["est_gain"] - t["amount"] * 0.5) < 1
+    assert "realized_gains" in result

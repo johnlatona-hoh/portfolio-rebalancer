@@ -38,8 +38,9 @@ export default function SnapshotPage() {
     setMsg(null);
     try {
       const res = await loadSnapshot(loadPin);
-      if (res.payload?.holdings) setAccounts(accountsFromHoldings(res.payload.holdings));
-      if (res.payload?.targets) setTargets(res.payload.targets);
+      const p = res.payload as Record<string, unknown>;
+      if (p?.holdings) setAccounts(accountsFromHoldings(p.holdings as Parameters<typeof accountsFromHoldings>[0]));
+      if (p?.targets) setTargets(p.targets as Record<string, number>);
       setMsg({ kind: "ok", text: "Snapshot loaded. Opening dashboard…" });
       setTimeout(() => nav("/dashboard"), 600);
     } catch (e: any) {

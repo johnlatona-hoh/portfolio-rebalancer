@@ -25,6 +25,8 @@ export interface ClassAllocation {
   pct: number;
   target_pct: number;
   delta_value: number;
+  post_pct: number;    // blended pct after applying the trade plan
+  drift_pct: number;   // post_pct - target_pct (residual misalignment)
 }
 
 export interface AccountAllocation {
@@ -42,13 +44,17 @@ export interface Trade {
   ticker: string | null;
   amount: number;
   tax_note: string;
+  est_gain: number; // estimated realized gain on taxable sells; 0 otherwise
 }
 
 export interface LocationGrade {
-  grade: string;
+  score: number;            // 1-10, 10 = best
   misplaced_count: number;
   total_holdings: number;
-  notes: string[];
+  inefficient_value: number;
+  misplaced_value: number;
+  reasons: string[];
+  methodology: string;
 }
 
 export interface AnalyzeResponse {
@@ -57,6 +63,8 @@ export interface AnalyzeResponse {
   by_account: AccountAllocation[];
   trades: Trade[];
   grade: LocationGrade;
+  realized_gains: number;  // total est. gains realized by the trade plan
+  max_drift_pct: number;   // largest post-plan deviation from any target (pct pts)
   unknown_tickers: string[];
 }
 
@@ -86,13 +94,25 @@ export interface SnapshotMeta {
   created_at: string;
 }
 
+export interface BergerTip {
+  title: string;
+  body: string;
+  advantage: string;
+  disadvantage: string;
+}
+
 // ---------- Calls ----------
 
 export async function analyzePortfolio(
   holdings: Holding[],
-  targets: Record<string, number>
+  targets: Record<string, number>,
+  gainAversion = 0
 ): Promise<AnalyzeResponse> {
-  const { data } = await api.post<AnalyzeResponse>("/portfolio/analyze", { holdings, targets });
+  const { data } = await api.post<AnalyzeResponse>("/portfolio/analyze", {
+    holdings,
+    targets,
+    gain_aversion: gainAversion,
+  });
   return data;
 }
 
@@ -146,7 +166,7 @@ export async function saveSnapshot(
 export async function loadSnapshot(
   pin: string,
   id?: string
-): Promise<{ id: string; payload: any; label: string | null; created_at: string }> {
+): Promise<{ id: string; payload: unknown; label: string | null; created_at: string }> {
   const { data } = await api.post("/snapshots/load", { pin, id: id ?? null });
   return data;
 }
@@ -154,4 +174,9 @@ export async function loadSnapshot(
 export async function getInsights(summary: unknown): Promise<string[]> {
   const { data } = await api.post<{ insights: string[] }>("/advisor/insights", { summary });
   return data.insights;
+}
+
+export async function getBergerTips(summary: unknown): Promise<BergerTip[]> {
+  const { data } = await api.post<{ tips: BergerTip[] }>("/advisor/tips", { summary });
+  return data.tips;
 }
