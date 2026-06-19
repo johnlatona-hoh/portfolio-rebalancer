@@ -10,7 +10,7 @@ class User(Base):
     """Email + PIN account for multi-user snapshot storage.
     PIN is never stored plaintext - only a per-user salted HMAC-SHA256 hash."""
 
-    __tablename__ = "users"
+    __tablename__ = "rebalancer_users"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)       # uuid4 hex
     email: Mapped[str] = mapped_column(String, unique=True, index=True)
@@ -24,7 +24,7 @@ class TickerTag(Base):
     unknown tickers get classified by the user (optionally Gemini-suggested) and
     persisted here for next time."""
 
-    __tablename__ = "ticker_tags"
+    __tablename__ = "rebalancer_ticker_tags"
 
     ticker: Mapped[str] = mapped_column(String, primary_key=True)
     asset_class: Mapped[str] = mapped_column(String, index=True)      # one of ASSET_CLASSES
@@ -43,7 +43,7 @@ class Snapshot(Base):
     user_id and description are added via run_migrations() ALTER TABLE on existing
     deployments (may be NULL on old rows)."""
 
-    __tablename__ = "snapshots"
+    __tablename__ = "rebalancer_snapshots"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)           # uuid4 hex
     pin_hash: Mapped[str] = mapped_column(String, index=True)           # legacy: old PIN-keyed rows

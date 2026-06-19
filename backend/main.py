@@ -12,8 +12,8 @@ from routers import portfolio, tags, snapshots, users, advisor
 async def run_migrations():
     """Add new columns to existing tables if they don't exist yet, so deploys self-heal."""
     migrations: list[str] = [
-        "ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS user_id VARCHAR",
-        "ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT ''",
+        "ALTER TABLE rebalancer_snapshots ADD COLUMN IF NOT EXISTS user_id VARCHAR",
+        "ALTER TABLE rebalancer_snapshots ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT ''",
     ]
     async with engine.begin() as conn:
         for sql in migrations:
