@@ -10,7 +10,12 @@ Asset-location principles implemented (see the tax-efficient asset-location guid
   - High-growth / tax-efficient equity belongs in tax-free (Roth) or taxable.
 """
 
-from constants import ASSET_CLASSES, parent_of
+import math
+
+from constants import (
+    ASSET_CLASSES, parent_of,
+    RETURN_ASSUMPTIONS, MAX_DRAWDOWN_PCT, get_correlation,
+)
 
 # Per-account-type fill preference: which asset classes to place in each account type
 # first. Tax-deferred soaks up tax-inefficient income (bonds, REITs); tax-free (Roth)
@@ -342,6 +347,125 @@ def location_grade(holdings, tags):
     }
 
 
+def _portfolio_vol(weights_by_class: dict) -> tuple[float, float]:
+    """Return (portfolio_volatility, weighted_avg_volatility) as decimals (e.g. 0.12 = 12%).
+    weights_by_class: {asset_class: fraction_of_portfolio} — fractions, not percentages."""
+    classes = [c for c in ASSET_CLASSES if weights_by_class.get(c, 0.0) > 0]
+    variance = 0.0
+    for ci in classes:
+        for cj in classes:
+            wi = weights_by_class.get(ci, 0.0)
+            wj = weights_by_class.get(cj, 0.0)
+            si = RETURN_ASSUMPTIONS.get(ci, {"stdev": 0.0})["stdev"]
+            sj = RETURN_ASSUMPTIONS.get(cj, {"stdev": 0.0})["stdev"]
+            variance += wi * wj * si * sj * get_correlation(ci, cj)
+    portfolio_vol = math.sqrt(max(variance, 0.0))
+    weighted_avg_vol = sum(
+        weights_by_class.get(c, 0.0) * RETURN_ASSUMPTIONS.get(c, {"stdev": 0.0})["stdev"]
+        for c in classes
+    )
+    return portfolio_vol, weighted_avg_vol
+
+
+def _class_of(ticker: str, tags: dict) -> str | None:
+    return tags.get(ticker, {}).get("asset_class")
+
+
+def compute_risk_metrics(holdings: list, by_account_data: list, tags: dict, total_value: float):
+    """Return a dict matching PortfolioRisk, or None if total_value is zero."""
+    if total_value <= 0:
+        return None
+
+    # Build portfolio-level weights by asset class
+    class_values: dict[str, float] = {}
+    for h in holdings:
+        cls = _class_of(h["ticker"], tags)
+        if cls:
+            class_values[cls] = class_values.get(cls, 0.0) + h["current_value"]
+    weights = {c: v / total_value for c, v in class_values.items()}
+
+    # Portfolio expected return: Σ(w_i × mean_i)
+    expected_return = sum(
+        weights.get(c, 0.0) * RETURN_ASSUMPTIONS.get(c, {"mean": 0.0})["mean"]
+        for c in ASSET_CLASSES
+    )
+
+    # Portfolio volatility: √(wᵀΣw)
+    portfolio_vol, weighted_avg_vol = _portfolio_vol(weights)
+    div_benefit = (
+        max(0.0, 1.0 - portfolio_vol / weighted_avg_vol) if weighted_avg_vol > 0 else 0.0
+    )
+
+    # Max drawdown estimate: value-weighted average of class drawdowns
+    max_dd = sum(
+        weights.get(c, 0.0) * MAX_DRAWDOWN_PCT.get(c, 0.0)
+        for c in ASSET_CLASSES
+    )
+
+    # Position sizing
+    tagged = sorted(
+        [h for h in holdings if _class_of(h["ticker"], tags)],
+        key=lambda h: h["current_value"],
+        reverse=True,
+    )
+    largest_pct = (tagged[0]["current_value"] / total_value * 100) if tagged else 0.0
+    top5_pct = sum(h["current_value"] for h in tagged[:5]) / total_value * 100
+
+    # Per-account risk
+    acct_val_map = {a["account_name"]: a["value"] for a in by_account_data}
+    account_risks = []
+    for a in by_account_data:
+        acct_val = a["value"]
+        if acct_val <= 0:
+            continue
+        acct_weights = {c: v / acct_val for c, v in a["by_class"].items()}
+        acct_return = sum(
+            acct_weights.get(c, 0.0) * RETURN_ASSUMPTIONS.get(c, {"mean": 0.0})["mean"]
+            for c in ASSET_CLASSES
+        )
+        acct_vol, _ = _portfolio_vol(acct_weights)
+        acct_dd = sum(
+            acct_weights.get(c, 0.0) * MAX_DRAWDOWN_PCT.get(c, 0.0)
+            for c in ASSET_CLASSES
+        )
+        account_risks.append({
+            "account_name": a["account_name"],
+            "account_type": a["account_type"],
+            "value": round(acct_val, 2),
+            "expected_return_pct": round(acct_return * 100, 2),
+            "volatility_pct": round(acct_vol * 100, 2),
+            "max_drawdown_pct": round(acct_dd * 100, 2),
+        })
+
+    # Per-holding risk
+    holding_risks = []
+    for h in tagged:
+        cls = _class_of(h["ticker"], tags)
+        acct_val = acct_val_map.get(h["account_name"], 0.0)
+        holding_risks.append({
+            "ticker": h["ticker"],
+            "account_name": h["account_name"],
+            "asset_class": cls,
+            "current_value": round(h["current_value"], 2),
+            "portfolio_pct": round(h["current_value"] / total_value * 100, 2),
+            "account_pct": round(h["current_value"] / acct_val * 100, 2) if acct_val > 0 else 0.0,
+            "expected_return_pct": round(RETURN_ASSUMPTIONS.get(cls, {"mean": 0.0})["mean"] * 100, 2),
+            "volatility_pct": round(RETURN_ASSUMPTIONS.get(cls, {"stdev": 0.0})["stdev"] * 100, 2),
+            "max_drawdown_pct": round(MAX_DRAWDOWN_PCT.get(cls, 0.0) * 100, 2),
+        })
+
+    return {
+        "expected_return_pct": round(expected_return * 100, 2),
+        "volatility_pct": round(portfolio_vol * 100, 2),
+        "max_drawdown_pct": round(max_dd * 100, 2),
+        "diversification_benefit_pct": round(div_benefit * 100, 2),
+        "largest_position_pct": round(largest_pct, 2),
+        "top5_concentration_pct": round(top5_pct, 2),
+        "by_account": account_risks,
+        "by_holding": holding_risks,
+    }
+
+
 def analyze(holdings, targets, tags, gain_aversion: float = 0.0):
     """Top-level orchestration used by the /analyze router. `gain_aversion` (0..1)
     slides between best-allocation (0) and zero-realized-gains (1) in taxable accounts."""
@@ -378,13 +502,15 @@ def analyze(holdings, targets, tags, gain_aversion: float = 0.0):
     unknown = sorted({h["ticker"] for h in holdings if h["ticker"] not in tags})
     max_drift = max((abs(b["drift_pct"]) for b in blended_view), default=0.0)
 
+    by_account_data = account_breakdown(holdings, tags)
     return {
         "total_value": round(total, 2),
         "blended": blended_view,
-        "by_account": account_breakdown(holdings, tags),
+        "by_account": by_account_data,
         "trades": trades,
         "grade": grade,
         "realized_gains": realized_gains,
         "max_drift_pct": round(max_drift, 2),
         "unknown_tickers": unknown,
+        "risk": compute_risk_metrics(holdings, by_account_data, tags, total),
     }

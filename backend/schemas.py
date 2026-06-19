@@ -67,6 +67,38 @@ class LocationGrade(BaseModel):
     methodology: str
 
 
+class HoldingRisk(BaseModel):
+    ticker: str
+    account_name: str
+    asset_class: str
+    current_value: float
+    portfolio_pct: float
+    account_pct: float
+    expected_return_pct: float   # e.g. 7.0 for US Stock (annual)
+    volatility_pct: float        # e.g. 16.0 (annual std dev)
+    max_drawdown_pct: float      # e.g. -50.0 (negative, historical worst case)
+
+
+class AccountRisk(BaseModel):
+    account_name: str
+    account_type: AccountType
+    value: float
+    expected_return_pct: float
+    volatility_pct: float
+    max_drawdown_pct: float      # negative
+
+
+class PortfolioRisk(BaseModel):
+    expected_return_pct: float
+    volatility_pct: float
+    max_drawdown_pct: float              # negative
+    diversification_benefit_pct: float  # % of vol removed by diversification
+    largest_position_pct: float
+    top5_concentration_pct: float
+    by_account: list[AccountRisk]
+    by_holding: list[HoldingRisk]        # sorted by value desc
+
+
 class AnalyzeResponse(BaseModel):
     total_value: float
     blended: list[ClassAllocation]
@@ -76,6 +108,7 @@ class AnalyzeResponse(BaseModel):
     realized_gains: float = 0.0       # total estimated gains realized by the trade plan
     max_drift_pct: float = 0.0        # largest post-plan deviation from any target (pct pts)
     unknown_tickers: list[str]  # tickers with no tag - caller should classify
+    risk: PortfolioRisk | None = None
 
 
 # ---------- Projection ----------

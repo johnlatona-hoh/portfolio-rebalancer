@@ -57,6 +57,38 @@ export interface LocationGrade {
   methodology: string;
 }
 
+export interface HoldingRisk {
+  ticker: string;
+  account_name: string;
+  asset_class: string;
+  current_value: number;
+  portfolio_pct: number;
+  account_pct: number;
+  expected_return_pct: number;
+  volatility_pct: number;
+  max_drawdown_pct: number;  // negative, e.g. -50.0
+}
+
+export interface AccountRisk {
+  account_name: string;
+  account_type: AccountType;
+  value: number;
+  expected_return_pct: number;
+  volatility_pct: number;
+  max_drawdown_pct: number;  // negative
+}
+
+export interface PortfolioRisk {
+  expected_return_pct: number;
+  volatility_pct: number;
+  max_drawdown_pct: number;              // negative
+  diversification_benefit_pct: number;  // % of vol removed by diversification
+  largest_position_pct: number;
+  top5_concentration_pct: number;
+  by_account: AccountRisk[];
+  by_holding: HoldingRisk[];
+}
+
 export interface AnalyzeResponse {
   total_value: number;
   blended: ClassAllocation[];
@@ -66,6 +98,7 @@ export interface AnalyzeResponse {
   realized_gains: number;  // total est. gains realized by the trade plan
   max_drift_pct: number;   // largest post-plan deviation from any target (pct pts)
   unknown_tickers: string[];
+  risk: PortfolioRisk | null;
 }
 
 export interface ProjectionPoint {

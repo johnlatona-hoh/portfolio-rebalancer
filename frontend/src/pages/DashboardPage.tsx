@@ -23,6 +23,7 @@ import GradeCard from "../components/GradeCard";
 import StrategySlider from "../components/StrategySlider";
 import InflationControls from "../components/InflationControls";
 import TipsBox from "../components/TipsBox";
+import RiskPanel from "../components/RiskPanel";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -217,6 +218,14 @@ export default function DashboardPage() {
           <ReturnAssumptions blended={analysis.blended} />
         </Card>
       </div>
+
+      {/* ---- risk / reward ---- */}
+      {analysis.risk && (
+        <Card>
+          <h3 className="font-semibold mb-4">Risk / Reward Analysis</h3>
+          <RiskPanel risk={analysis.risk} />
+        </Card>
+      )}
 
       {/* ---- trades ---- */}
       <Card>

@@ -60,3 +60,62 @@ RETURN_ASSUMPTIONS: dict[str, dict[str, float]] = {
     "Crypto":             {"mean": 0.100, "stdev": 0.55},
     "Other Alternatives": {"mean": 0.050, "stdev": 0.14},
 }
+
+# Historical worst-case peak-to-trough drawdowns (decimal fractions, negative).
+MAX_DRAWDOWN_PCT: dict[str, float] = {
+    "US Stock":           -0.50,
+    "International":      -0.55,
+    "Taxable Bond":       -0.15,
+    "Muni Bond":          -0.12,
+    "REITs":              -0.68,
+    "Cash":               -0.01,
+    "Gold & Commodities": -0.45,
+    "Crypto":             -0.85,
+    "Other Alternatives": -0.40,
+}
+
+# Symmetric pairwise annual-return correlations (unique pairs; diagonal = 1.0 implied).
+CORRELATION: dict[tuple[str, str], float] = {
+    ("US Stock", "International"):                0.85,
+    ("US Stock", "Taxable Bond"):                -0.10,
+    ("US Stock", "Muni Bond"):                   -0.05,
+    ("US Stock", "REITs"):                        0.65,
+    ("US Stock", "Cash"):                         0.00,
+    ("US Stock", "Gold & Commodities"):           0.05,
+    ("US Stock", "Crypto"):                       0.20,
+    ("US Stock", "Other Alternatives"):           0.50,
+    ("International", "Taxable Bond"):           -0.05,
+    ("International", "Muni Bond"):              -0.03,
+    ("International", "REITs"):                   0.55,
+    ("International", "Cash"):                    0.00,
+    ("International", "Gold & Commodities"):      0.10,
+    ("International", "Crypto"):                  0.18,
+    ("International", "Other Alternatives"):      0.45,
+    ("Taxable Bond", "Muni Bond"):                0.80,
+    ("Taxable Bond", "REITs"):                    0.10,
+    ("Taxable Bond", "Cash"):                     0.20,
+    ("Taxable Bond", "Gold & Commodities"):       0.15,
+    ("Taxable Bond", "Crypto"):                   0.00,
+    ("Taxable Bond", "Other Alternatives"):       0.10,
+    ("Muni Bond", "REITs"):                       0.08,
+    ("Muni Bond", "Cash"):                        0.18,
+    ("Muni Bond", "Gold & Commodities"):          0.10,
+    ("Muni Bond", "Crypto"):                      0.00,
+    ("Muni Bond", "Other Alternatives"):          0.08,
+    ("REITs", "Cash"):                            0.00,
+    ("REITs", "Gold & Commodities"):              0.15,
+    ("REITs", "Crypto"):                          0.10,
+    ("REITs", "Other Alternatives"):              0.35,
+    ("Cash", "Gold & Commodities"):               0.02,
+    ("Cash", "Crypto"):                           0.00,
+    ("Cash", "Other Alternatives"):               0.05,
+    ("Gold & Commodities", "Crypto"):             0.15,
+    ("Gold & Commodities", "Other Alternatives"): 0.25,
+    ("Crypto", "Other Alternatives"):             0.20,
+}
+
+
+def get_correlation(a: str, b: str) -> float:
+    if a == b:
+        return 1.0
+    return CORRELATION.get((a, b), CORRELATION.get((b, a), 0.0))
