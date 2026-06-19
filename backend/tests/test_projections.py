@@ -51,3 +51,85 @@ def test_percentiles_are_ordered_with_volatility():
     )
     last = result["points"][-1]
     assert last["p10"] < last["p50"] < last["p90"]
+
+
+def test_fee_drag_lowers_deterministic_fv():
+    base = projections.project(
+        {"US Stock": 1000.0},
+        horizon_months=120,
+        n_paths=100,
+        assumptions={"US Stock": {"mean": 0.07, "stdev": 0.0}},
+        seed=3,
+    )["points"][-1]["deterministic"]
+    netted = projections.project(
+        {"US Stock": 1000.0},
+        horizon_months=120,
+        n_paths=100,
+        assumptions={"US Stock": {"mean": 0.07, "stdev": 0.0}},
+        fee_drag=0.01,  # 1% annual fee
+        seed=3,
+    )["points"][-1]["deterministic"]
+    # fee drag reduces the effective return from 7% to 6%
+    assert netted < base
+    # engine rounds to cents, so compare at cent tolerance
+    assert math.isclose(netted, 1000.0 * (1.06 ** 10), abs_tol=0.01)
+
+
+def test_positive_contribution_raises_ending_value():
+    no_contrib = projections.project(
+        {"US Stock": 1000.0},
+        horizon_months=12,
+        n_paths=100,
+        assumptions={"US Stock": {"mean": 0.07, "stdev": 0.0}},
+        seed=5,
+    )["points"][-1]["p50"]
+    with_contrib = projections.project(
+        {"US Stock": 1000.0},
+        horizon_months=12,
+        n_paths=100,
+        assumptions={"US Stock": {"mean": 0.07, "stdev": 0.0}},
+        monthly_contribution=100.0,
+        seed=5,
+    )["points"][-1]["p50"]
+    # 12 monthly contributions of 100 add well over 1200 (plus growth)
+    assert with_contrib > no_contrib + 1100.0
+
+
+def test_withdrawal_lowers_ending_value():
+    no_flow = projections.project(
+        {"US Stock": 100000.0},
+        horizon_months=12,
+        n_paths=100,
+        assumptions={"US Stock": {"mean": 0.07, "stdev": 0.0}},
+        seed=9,
+    )["points"][-1]["p50"]
+    withdrawing = projections.project(
+        {"US Stock": 100000.0},
+        horizon_months=12,
+        n_paths=100,
+        assumptions={"US Stock": {"mean": 0.07, "stdev": 0.0}},
+        monthly_contribution=-500.0,
+        seed=9,
+    )["points"][-1]["p50"]
+    assert withdrawing < no_flow
+
+
+def test_zero_vol_contribution_matches_annuity_fv():
+    # With no volatility, an annuity-due of monthly contributions plus the lump sum
+    # should match the closed-form deterministic future value.
+    pv, c, months = 1000.0, 100.0, 12
+    annual = 0.07
+    r_m = (1 + annual) ** (1 / 12) - 1
+    result = projections.project(
+        {"US Stock": pv},
+        horizon_months=months,
+        n_paths=50,
+        assumptions={"US Stock": {"mean": annual, "stdev": 0.0}},
+        monthly_contribution=c,
+        seed=11,
+    )
+    last = result["points"][-1]["deterministic"]
+    # lump-sum FV + ordinary-annuity FV of the contributions
+    fv_lump = pv * ((1 + r_m) ** months)
+    fv_annuity = c * (((1 + r_m) ** months - 1) / r_m)
+    assert math.isclose(last, fv_lump + fv_annuity, rel_tol=1e-6)

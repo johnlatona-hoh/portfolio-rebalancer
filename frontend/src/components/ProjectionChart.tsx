@@ -16,6 +16,8 @@ interface Props {
   points: ProjectionPoint[];
   height?: number;
   realDollars?: boolean;      // label axes as "today's $" vs "future $"
+  netOfFees?: boolean;        // returns shown after subtracting expense ratios
+  monthlyContribution?: number; // >0 contributing, <0 withdrawing
 }
 
 const MEDIAN_COLOR = "#f5a623";   // bright orange — median (p50)
@@ -23,7 +25,13 @@ const FAN_COLOR = "#6b8cba";      // muted blue — p10-p90 fan
 const DET_COLOR = "#4caf7d";      // green — steady/deterministic return
 
 /** Monte Carlo fan chart: p10–p90 shaded band, distinct amber median, dashed deterministic. */
-export default function ProjectionChart({ points, height = 260, realDollars = true }: Props) {
+export default function ProjectionChart({
+  points,
+  height = 260,
+  realDollars = true,
+  netOfFees = false,
+  monthlyContribution = 0,
+}: Props) {
   const data = points.map((p) => ({
     year: +(p.month / 12).toFixed(2),
     p10: p.p10,
@@ -172,6 +180,11 @@ export default function ProjectionChart({ points, height = 260, realDollars = tr
           </span>
           . The dashed line is steady-return growth with no year-to-year volatility.
           {realDollars && " Values are shown in today's purchasing power."}
+          {netOfFees && " Returns are shown net of fund expense ratios."}
+          {monthlyContribution > 0 &&
+            ` Assumes ${fmtMoney(monthlyContribution)}/mo in contributions.`}
+          {monthlyContribution < 0 &&
+            ` Assumes ${fmtMoney(-monthlyContribution)}/mo in withdrawals.`}
         </p>
       )}
     </div>

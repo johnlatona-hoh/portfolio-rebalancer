@@ -51,6 +51,12 @@ export default function DashboardPage() {
   const [realDollars, setRealDollars] = useState(true);
   const [inflationPct, setInflationPct] = useState(2.5);
 
+  // Net-of-fees toggle + monthly contribution/withdrawal (debounced like horizon)
+  const [netOfFees, setNetOfFees] = useState(false);
+  const [contribution, setContribution] = useState(0);
+  const [pendingContribution, setPendingContribution] = useState(0);
+  const contribDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // AI insights
   const [insights, setInsights] = useState<string[] | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
@@ -94,18 +100,33 @@ export default function DashboardPage() {
     analyzeDebounceRef.current = setTimeout(() => runAnalysis(v), 1000);
   }
 
-  // Horizon: update label immediately, debounce the actual projection by 2 s.
+  // Horizon: update label immediately, debounce the actual projection by 1 s.
   function handleHorizon(months: number) {
     setPendingHorizon(months);
     if (horizonDebounceRef.current) clearTimeout(horizonDebounceRef.current);
     horizonDebounceRef.current = setTimeout(() => setHorizon(months), 1000);
   }
 
-  // Re-project when committed horizon or analysis changes.
+  // Contribution: update the field immediately, debounce the projection by 1 s.
+  function handleContribution(amount: number) {
+    setPendingContribution(amount);
+    if (contribDebounceRef.current) clearTimeout(contribDebounceRef.current);
+    contribDebounceRef.current = setTimeout(() => setContribution(amount), 1000);
+  }
+
+  // Fee drag (annual decimal) applied only when the net-of-fees toggle is on.
+  const feeDrag = netOfFees && analysis?.risk ? analysis.risk.weighted_fee_pct / 100 : 0;
+
+  // Re-project when committed horizon/contribution, fee toggle, or analysis changes.
   useEffect(() => {
     if (!analysis) return;
-    projectPortfolio(valueByClass, horizon).then(setProjection).catch(() => setProjection(null));
-  }, [analysis, horizon, valueByClass]);
+    projectPortfolio(valueByClass, horizon, {
+      feeDrag,
+      monthlyContribution: contribution,
+    })
+      .then(setProjection)
+      .catch(() => setProjection(null));
+  }, [analysis, horizon, valueByClass, feeDrag, contribution]);
 
   // Deflate projection client-side for real-dollars view.
   const displayedPoints = useMemo(() => {
@@ -210,8 +231,40 @@ export default function DashboardPage() {
               <HorizonControl months={pendingHorizon} onChange={handleHorizon} />
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-4 mb-3 text-xs text-muted">
+            <label className="flex items-center gap-1">
+              <span>Monthly add / withdraw</span>
+              <span className="text-fg">$</span>
+              <input
+                type="number"
+                step="50"
+                value={pendingContribution}
+                onChange={(e) => handleContribution(Math.round(Number(e.target.value) || 0))}
+                className="w-24 bg-surface border border-border rounded px-2 py-1 text-fg"
+                title="Dollars added each month. Use a negative number for a withdrawal (e.g. retirement drawdown)."
+              />
+            </label>
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={netOfFees}
+                onChange={(e) => setNetOfFees(e.target.checked)}
+              />
+              <span>
+                Net of fees
+                {analysis.risk && netOfFees
+                  ? ` (-${analysis.risk.weighted_fee_pct.toFixed(2)}%/yr)`
+                  : ""}
+              </span>
+            </label>
+          </div>
           {displayedPoints ? (
-            <ProjectionChart points={displayedPoints} realDollars={realDollars} />
+            <ProjectionChart
+              points={displayedPoints}
+              realDollars={realDollars}
+              netOfFees={netOfFees}
+              monthlyContribution={contribution}
+            />
           ) : (
             <p className="text-muted text-sm">Projecting…</p>
           )}

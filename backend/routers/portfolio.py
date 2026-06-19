@@ -27,4 +27,6 @@ async def project(req: ProjectRequest):
         horizon_months=req.horizon_months,
         n_paths=req.n_paths,
         assumptions=req.assumptions,
+        fee_drag=req.fee_drag,
+        monthly_contribution=req.monthly_contribution,
     )

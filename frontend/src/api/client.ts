@@ -171,13 +171,19 @@ export async function analyzePortfolio(
 export async function projectPortfolio(
   valueByClass: Record<string, number>,
   horizonMonths: number,
-  assumptions?: Record<string, { mean: number; stdev: number }>
+  opts?: {
+    assumptions?: Record<string, { mean: number; stdev: number }>;
+    feeDrag?: number;            // annual decimal, e.g. 0.0005
+    monthlyContribution?: number; // negative = withdrawal
+  }
 ): Promise<ProjectResponse> {
   const { data } = await api.post<ProjectResponse>("/portfolio/project", {
     value_by_class: valueByClass,
     horizon_months: horizonMonths,
     n_paths: 1000,
-    assumptions: assumptions ?? null,
+    assumptions: opts?.assumptions ?? null,
+    fee_drag: opts?.feeDrag ?? 0,
+    monthly_contribution: opts?.monthlyContribution ?? 0,
   });
   return data;
 }

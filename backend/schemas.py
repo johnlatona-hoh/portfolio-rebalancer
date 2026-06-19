@@ -126,6 +126,10 @@ class ProjectRequest(BaseModel):
     n_paths: int = Field(default=1000, ge=100, le=10000)
     # optional per-class overrides: {"US Stock": {"mean": 0.05, "stdev": 0.2}}
     assumptions: dict[str, dict[str, float]] | None = None
+    # annual expense-ratio decimal subtracted from returns (net-of-fees view)
+    fee_drag: float = 0.0
+    # dollars added at month-end (negative = withdrawal), spread pro-rata by weight
+    monthly_contribution: float = 0.0
 
 
 class ProjectionPoint(BaseModel):
