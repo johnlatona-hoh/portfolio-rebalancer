@@ -46,12 +46,15 @@ function Test-BackendLive {
     } catch { return $false }
 }
 
-function Test-FrontendLive {
+function Get-FrontendBundle {
     try {
         $html = curl.exe -s $FRONTEND_URL
-        return ($html -match 'assets/index-[A-Za-z0-9_-]+\.js')
-    } catch { return $false }
+        if ($html -match 'assets/(index-[A-Za-z0-9_-]+\.js)') { return $Matches[1] }
+        return $null
+    } catch { return $null }
 }
+
+function Test-FrontendLive { return ($null -ne (Get-FrontendBundle)) }
 
 if ($VerifyOnly) {
     Step "Verify only"
@@ -97,12 +100,24 @@ git -C $root push
 if ($LASTEXITCODE -ne 0) { Fail "git push failed" }
 Ok "Pushed ($(Get-LocalHeadShort))"
 
-# --- 3. Frontend deploy (explicit; does not depend on Vercel auto-deploy) ---
-Step "Deploy frontend to Vercel (production)"
-Push-Location $frontend
-npx vercel --prod --yes | Out-Host
-Pop-Location
-if (Test-FrontendLive) { Ok "Frontend deployed" } else { Write-Host "Frontend deploy uncertain - check Vercel" -ForegroundColor Yellow }
+# --- 3. Frontend deploy: Vercel auto-deploys from the git push above ---
+# (Root Directory = frontend is set in the Vercel dashboard, so git push -> build.)
+Step "Waiting for Vercel git auto-deploy (frontend)"
+$preBundle = Get-FrontendBundle
+Write-Host "  bundle before: $preBundle"
+$fdeadline = (Get-Date).AddMinutes(5)
+$fchanged = $false
+while ((Get-Date) -lt $fdeadline) {
+    $now = Get-FrontendBundle
+    if ($now -and $now -ne $preBundle) { $fchanged = $true; break }
+    Start-Sleep -Seconds 15
+}
+if ($fchanged) {
+    Ok "Frontend auto-deployed (new bundle: $(Get-FrontendBundle))"
+} else {
+    Write-Host "Frontend bundle unchanged after 5 min." -ForegroundColor Yellow
+    Write-Host "  Fine if this commit had no frontend changes; otherwise check the Vercel dashboard." -ForegroundColor Yellow
+}
 
 # --- 4. Verify backend (Render) actually serves the new code ---
 Step "Waiting for Render backend to serve new code (up to 15 min)"

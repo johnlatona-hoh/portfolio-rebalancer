@@ -32,10 +32,10 @@ to a property that only exists in the new code, so the verify step is meaningful
     didn't trigger one. You can also trigger manually:
     `curl -X POST "$RENDER_DEPLOY_HOOK"`
 
-- **Vercel (frontend):** git is connected (`vercel git connect`). For git-triggered
-  builds to succeed, the **Root Directory must be `frontend`** (Vercel dashboard →
-  project → Settings → General → Root Directory). Until that's set, deploy with the CLI
-  (what `deploy.ps1` does): `cd frontend && npx vercel --prod --yes`.
+- **Vercel (frontend):** git is connected **and Root Directory = `frontend`**, so a plain
+  `git push` to `main` auto-builds and deploys the frontend. `deploy.ps1` relies on this and
+  verifies by watching the live bundle hash change (no Vercel CLI / token needed). If you ever
+  need a manual deploy and the CLI token has expired, run `npx vercel login` first.
 
 ## Database migrations
 
