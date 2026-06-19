@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A personal, tax-aware portfolio **rebalancing** tool. Upload holdings via CSV, see current-vs-target
-allocation across the six asset classes, get a concrete **tax-aware** buy/sell plan (asset-location
-aware), project the portfolio forward (Monte Carlo), and get optional AI tax-location advice. Built to
-reuse the same stack/patterns as the MusicCollection app.
+A personal, tax-aware portfolio **rebalancing** tool. Upload holdings via CSV (native Schwab position
+exports auto-detected, or a simple template), see current-vs-target allocation across nine tax-aware
+sub-classes, get a concrete **tax-aware**, execution-ready buy/sell plan (asset-location aware,
+cash-neutral per account), project the portfolio forward (Monte Carlo), and get optional AI
+tax-location advice. Built to reuse the same stack/patterns as the MusicCollection app.
 
 ## Commands
 
@@ -58,27 +59,39 @@ MusicCollection project's structure so deploy/config knowledge transfers.
 persisted server-side is the **ticker tag map** and **PIN-keyed encrypted snapshots** (tickers,
 quantities, account *types* only — no names/account numbers; payload encrypted via Fernet).
 
+### Asset taxonomy (sub-classes)
+The allocation/target dimension is the **sub-class** — 9 of them in `constants.ASSET_CLASSES`:
+US Stock, International, **Muni Bond**, **Taxable Bond**, REITs, Cash, **Gold & Commodities**,
+**Crypto**, **Other Alternatives**. Bonds and Alternatives are split by tax treatment so the engine
+can keep tax-efficient sleeves (munis) in taxable and route tax-inefficient sleeves to tax-deferred.
+Each sub-class maps to a display **parent** (`constants.SUBCLASS`, `parent_of()`, `tax_of()`); parents
+are US Stock / International / Bond / REITs / Cash / Alternatives.
+
 ### Backend (`backend/`)
-- `constants.py` — canonical vocabulary: the 6 `ASSET_CLASSES`, `ACCOUNT_TYPES`, `TAX_EFFICIENCIES`,
-  and `RETURN_ASSUMPTIONS` (per-class mean/stdev for the projection — edit here to tune).
-- `models.py` — `TickerTag` (ticker→asset_class+tax_efficiency), `Snapshot` (PIN-keyed encrypted blob).
+- `constants.py` — canonical vocabulary: the 9 sub-class `ASSET_CLASSES`, `SUBCLASS` (parent + default
+  tax per sub-class), `parent_of`/`tax_of`, `PARENTS`, `ACCOUNT_TYPES`, `TAX_EFFICIENCIES`, and
+  per-sub-class `RETURN_ASSUMPTIONS` (mean/stdev for the projection — edit here to tune).
+- `models.py` — `TickerTag` (ticker→asset_class[sub-class]+tax_efficiency), `Snapshot` (PIN-keyed blob).
 - `services/rebalance.py` — **pure-Python engine** (no DB/network), the core logic. `roll_up`,
-  `compute_deltas`, `plan_trades` (tax-aware placement), `location_grade`, and `analyze` orchestrator.
-  Heavily unit-tested in `tests/test_rebalance.py`.
-- `services/projections.py` — Monte Carlo + deterministic FV, stdlib only (no numpy). Tested in
-  `tests/test_projections.py`.
+  `compute_deltas`, `target_composition` + `plan_trades` (**per-account, cash-neutral, tax-aware
+  placement** via the `PLACEMENT` map), `location_grade`, and `analyze` orchestrator. Heavily
+  unit-tested in `tests/test_rebalance.py`.
+- `services/projections.py` — Monte Carlo + deterministic FV, stdlib only (no numpy). Tested.
+- `services/classify.py` — **description-based classifier**: maps any ticker to a sub-class +
+  tax-efficiency from its broker Description/Asset Type text (no AI). Tested in `tests/test_classify.py`.
 - `services/ai.py` — Gemini wrapper (google-genai, `gemini-2.5-flash`), adapted from MusicCollection's
   `claude_ai.py`: `_generate_with_retry` (429 backoff), `UNKNOWN` sentinel, no-op without key.
   `portfolio_insights`, `suggest_ticker_tag`.
 - `services/crypto.py` — Fernet encrypt/decrypt of snapshot payloads + salted PIN hash.
-- `services/csv_template.py` — canonical CSV column contract + parser/validator.
-- `seed_data.py` / `seed_tickers.py` — ~40 common index/ETF tickers and the idempotent seeder.
+- `services/csv_template.py` — canonical CSV column contract + parser/validator (simple template path).
+- `seed_data.py` / `seed_tickers.py` — ~66 common index/ETF tickers (sub-class-tagged) + idempotent seeder.
 
 ### Routers (`backend/routers/`)
 - `portfolio.py` — `POST /portfolio/analyze` (holdings+targets → allocation/trades/grade),
   `POST /portfolio/project` (Monte Carlo).
-- `tags.py` — `GET /tags`, `POST /tags` (upsert), `POST /tags/suggest` (Gemini). `load_tags()` helper
-  builds the `{ticker: {...}}` dict the engine consumes.
+- `tags.py` — `GET /tags`, `POST /tags` (upsert), `POST /tags/auto` (classify unknowns by
+  description, persists), `POST /tags/suggest` (Gemini fallback). `load_tags()` helper builds the
+  `{ticker: {...}}` dict the engine consumes.
 - `snapshots.py` — `POST /snapshots`, `POST /snapshots/load` (PIN-keyed).
 - `advisor.py` — `POST /advisor/insights`.
 
@@ -89,17 +102,28 @@ there so deploys self-heal. Type changes need a manual Supabase `ALTER TABLE ...
 
 ### Frontend (`frontend/src/`)
 - `api/client.ts` — all API calls + TS interfaces; **keep in sync with `backend/schemas.py`**.
-- `state/portfolio.tsx` — in-browser portfolio context (holdings + targets), shared across pages.
-- Pages: `SetupPage` (CSV upload, unknown-ticker classification, targets), `DashboardPage` (summary,
-  allocation bars, projection + horizon control, trade table, AI advisor, scenario panel),
-  `SnapshotPage` (PIN save/load + local JSON download).
+- `state/portfolio.tsx` — in-browser context. **`accounts` (parsed uploads) is the source of truth;
+  `holdings` is derived from it** so `reset()` fully clears the session for repeated use.
+- `utils/schwabParse.ts` — **Schwab export parser** (`parseSchwabCsv`): extracts account name from the
+  title row, infers account type, cleans `$`/commas/`(parens)`/`N/A`, captures Description/Asset-Type
+  meta (for auto-classify), and a synthetic `CASH` holding. Also `accountsFromHoldings` (snapshot load)
+  and `holdingsForAccount`.
+- Pages: `SetupPage` (multi-file upload, per-account type override, cash flag, auto-classify unknowns,
+  targets, Clear all), `DashboardPage` (summary, allocation bars, projection + horizon control, trade
+  table, AI advisor, scenario panel), `SnapshotPage` (PIN save/load + local JSON download).
 - Components: `AllocationBars`, `TradeTable`, `ProjectionChart` (recharts fan chart), `HorizonControl`,
   `TickerTagEditor`, `ScenarioPanel` (what-if: edit holdings → side-by-side compare).
-- `utils/assetClass.ts` (6-class constants + colors), `utils/money.ts` (formatters).
+- `utils/assetClass.ts` (9 sub-class constants, `PARENT_OF`, `PARENTS`, colors), `utils/money.ts`.
+- `scripts/test_*.ts` — dev harnesses (run with `node --experimental-strip-types`) that exercise the
+  parser/analyze/advisor against real Schwab files. Not part of the build (`tsconfig` includes only `src`).
 
 ## Key design notes
 - **Python 3.13 required** — 3.14 has no prebuilt asyncpg/pydantic-core wheels and source builds fail.
+- **Backend source must stay ASCII-only** — on Windows this Python imports `.py` as cp1252, so non-ASCII
+  punctuation in user-facing string literals becomes mojibake in API responses. Keep literals ASCII.
 - The rebalancing engine is intentionally pure and dict-based so it's trivially testable without
   FastAPI/DB. Add behavior test-first in `tests/`.
+- The trade plan rebalances **within each account** (no inter-account transfers): each account's buys
+  equal its sells, so trades are execution-ready. Placement is driven by sub-class via `PLACEMENT`.
 - No realtime market-price API in v1 — `current_value`/`cost_basis` come from the uploaded CSV. A
   price source can be added later behind the ticker model without touching the engine.

@@ -1,14 +1,22 @@
-import { Routes, Route, NavLink } from "react-router-dom";
-import { PortfolioProvider } from "./state/portfolio";
+import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
+import { PortfolioProvider, usePortfolio } from "./state/portfolio";
 import SetupPage from "./pages/SetupPage";
 import DashboardPage from "./pages/DashboardPage";
 import SnapshotPage from "./pages/SnapshotPage";
 
 function Navbar() {
+  const nav = useNavigate();
+  const { loaded, reset } = usePortfolio();
   const link = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-1.5 rounded-md text-sm ${
       isActive ? "bg-accent text-white" : "text-muted hover:text-gray-100"
     }`;
+
+  function startOver() {
+    reset();
+    nav("/");
+  }
+
   return (
     <nav className="border-b border-border bg-card">
       <div className="max-w-screen-xl mx-auto px-4 py-3 flex items-center gap-2">
@@ -22,6 +30,14 @@ function Navbar() {
         <NavLink to="/snapshots" className={link}>
           Snapshots
         </NavLink>
+        {loaded && (
+          <button
+            onClick={startOver}
+            className="ml-auto text-sm px-3 py-1.5 rounded-md border border-border text-muted hover:text-gray-100"
+          >
+            Start over
+          </button>
+        )}
       </div>
     </nav>
   );

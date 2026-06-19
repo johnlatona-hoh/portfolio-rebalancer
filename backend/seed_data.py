@@ -1,7 +1,7 @@
-"""Seed list of common index/ETF tickers → (asset_class, tax_efficiency, name).
+"""Seed list of common index/ETF tickers -> (asset_class, tax_efficiency, name).
 
 Kept as plain data so it can be imported by both the async seeder and any test.
-asset_class ∈ constants.ASSET_CLASSES; tax_efficiency ∈ constants.TAX_EFFICIENCIES.
+asset_class in constants.ASSET_CLASSES; tax_efficiency in constants.TAX_EFFICIENCIES.
 """
 
 # ticker: (asset_class, tax_efficiency, name)
@@ -31,17 +31,19 @@ SEED_TICKERS: dict[str, tuple[str, str, str]] = {
     "VTIAX": ("International", "efficient", "Vanguard Total Intl Stock Index"),
     "FTIHX": ("International", "efficient", "Fidelity Total International Index"),
 
-    # --- Bond (tax-inefficient: ordinary-income interest) ---
-    "BND":  ("Bond", "inefficient", "Vanguard Total Bond Market ETF"),
-    "AGG":  ("Bond", "inefficient", "iShares Core US Aggregate Bond ETF"),
-    "BNDX": ("Bond", "inefficient", "Vanguard Total International Bond ETF"),
-    "VBTLX": ("Bond", "inefficient", "Vanguard Total Bond Market Index"),
-    "FXNAX": ("Bond", "inefficient", "Fidelity US Bond Index"),
-    "VTEB": ("Bond", "efficient", "Vanguard Tax-Exempt Bond ETF (munis)"),
-    "MUB":  ("Bond", "efficient", "iShares National Muni Bond ETF"),
-    "VWIUX": ("Bond", "efficient", "Vanguard Interm-Term Tax-Exempt (munis)"),
-    "TLT":  ("Bond", "inefficient", "iShares 20+ Year Treasury Bond ETF"),
-    "VTIP": ("Bond", "inefficient", "Vanguard Short-Term Inflation-Protected ETF"),
+    # --- Taxable Bond (tax-inefficient: ordinary-income interest) ---
+    "BND":  ("Taxable Bond", "inefficient", "Vanguard Total Bond Market ETF"),
+    "AGG":  ("Taxable Bond", "inefficient", "iShares Core US Aggregate Bond ETF"),
+    "BNDX": ("Taxable Bond", "inefficient", "Vanguard Total International Bond ETF"),
+    "VBTLX": ("Taxable Bond", "inefficient", "Vanguard Total Bond Market Index"),
+    "FXNAX": ("Taxable Bond", "inefficient", "Fidelity US Bond Index"),
+    "TLT":  ("Taxable Bond", "inefficient", "iShares 20+ Year Treasury Bond ETF"),
+    "VTIP": ("Taxable Bond", "inefficient", "Vanguard Short-Term Inflation-Protected ETF"),
+
+    # --- Muni Bond (federally tax-exempt: keep in taxable) ---
+    "VTEB": ("Muni Bond", "efficient", "Vanguard Tax-Exempt Bond ETF (munis)"),
+    "MUB":  ("Muni Bond", "efficient", "iShares National Muni Bond ETF"),
+    "VWIUX": ("Muni Bond", "efficient", "Vanguard Interm-Term Tax-Exempt (munis)"),
 
     # --- REITs (tax-inefficient: ordinary-income distributions) ---
     "VNQ":  ("REITs", "inefficient", "Vanguard Real Estate ETF"),
@@ -57,9 +59,34 @@ SEED_TICKERS: dict[str, tuple[str, str, str]] = {
     "VUSXX": ("Cash", "neutral", "Vanguard Treasury Money Market Fund"),
     "BIL":   ("Cash", "neutral", "SPDR 1-3 Month T-Bill ETF"),
 
-    # --- Alternatives ---
-    "GLD":  ("Alternatives", "inefficient", "SPDR Gold Shares"),
-    "IAU":  ("Alternatives", "inefficient", "iShares Gold Trust"),
-    "DBMF": ("Alternatives", "inefficient", "iMGP DBi Managed Futures ETF"),
-    "BTAL": ("Alternatives", "inefficient", "AGFiQ US Market Neutral Anti-Beta ETF"),
+    # --- Alternatives: Gold & Commodities / Crypto / Other ---
+    "GLD":  ("Gold & Commodities", "inefficient", "SPDR Gold Shares"),
+    "IAU":  ("Gold & Commodities", "inefficient", "iShares Gold Trust"),
+    "GDMN": ("Gold & Commodities", "inefficient", "WisdomTree Efficient Gold Plus Gold Miners ETF"),
+    "IBIT": ("Crypto", "inefficient", "iShares Bitcoin Trust ETF"),
+    "DBMF": ("Other Alternatives", "inefficient", "iMGP DBi Managed Futures ETF"),
+    "BTAL": ("Other Alternatives", "inefficient", "AGFiQ US Market Neutral Anti-Beta ETF"),
+
+    # --- Cash placeholder for broker 'Cash & Cash Investments' rows ---
+    "CASH": ("Cash", "neutral", "Cash & Cash Investments"),
+
+    # --- Fundamental / factor / Schwab-lineup tickers (from real holdings) ---
+    "FNDA": ("US Stock", "efficient", "Schwab Fundamental US Small Company ETF"),
+    "FNDX": ("US Stock", "efficient", "Schwab Fundamental US Large Company ETF"),
+    "FNDC": ("International", "efficient", "Schwab Fundamental Intl Small Equity ETF"),
+    "FNDE": ("International", "efficient", "Schwab Fundamental Emerging Markets ETF"),
+    "FNDF": ("International", "efficient", "Schwab Fundamental Intl Large Equity ETF"),
+    "PRF":  ("US Stock", "efficient", "Invesco RAFI US 1000 ETF"),
+    "PRFZ": ("US Stock", "efficient", "Invesco RAFI US 1500 Small-Mid ETF"),
+    "SCHA": ("US Stock", "efficient", "Schwab US Small-Cap ETF"),
+    "SCHC": ("International", "efficient", "Schwab International Small-Cap Equity ETF"),
+    "SCHE": ("International", "efficient", "Schwab Emerging Markets Equity ETF"),
+    "SCHF": ("International", "efficient", "Schwab International Equity ETF"),
+    "SCHG": ("US Stock", "efficient", "Schwab US Large-Cap Growth ETF"),
+    "SCHX": ("US Stock", "efficient", "Schwab US Large-Cap ETF"),
+    "AVES": ("International", "efficient", "Avantis Emerging Markets Value ETF"),
+    "EFV":  ("International", "efficient", "iShares MSCI EAFE Value ETF"),
+    "IAGG": ("Taxable Bond", "inefficient", "iShares Core International Aggregate Bond ETF"),
+    "SCHP": ("Taxable Bond", "inefficient", "Schwab US TIPS ETF"),
+    "SCHZ": ("Taxable Bond", "inefficient", "Schwab US Aggregate Bond ETF"),
 }

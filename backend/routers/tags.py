@@ -5,8 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from constants import ASSET_CLASSES, TAX_EFFICIENCIES
 from database import get_db
 from models import TickerTag
-from schemas import TickerTagSchema, TickerTagSuggestRequest
+from schemas import TickerTagSchema, TickerTagSuggestRequest, AutoTagRequest
 from services import ai as ai_svc
+from services import classify as classify_svc
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -49,6 +50,29 @@ async def upsert_tag(tag: TickerTagSchema, db: AsyncSession = Depends(get_db)):
     await db.commit()
     return TickerTagSchema(ticker=ticker, asset_class=tag.asset_class,
                            tax_efficiency=tag.tax_efficiency, name=tag.name)
+
+
+@router.post("/auto", response_model=list[TickerTagSchema])
+async def auto_tag(req: AutoTagRequest, db: AsyncSession = Depends(get_db)):
+    """Classify any tickers that aren't yet known, using their broker Description /
+    Asset Type text (no AI). Existing tags are left untouched so manual overrides
+    survive. Returns the resulting tag for every requested ticker."""
+    out: list[TickerTagSchema] = []
+    for item in req.items:
+        ticker = item.ticker.strip().upper()
+        if not ticker:
+            continue
+        existing = await db.get(TickerTag, ticker)
+        if existing:
+            out.append(TickerTagSchema(ticker=existing.ticker, asset_class=existing.asset_class,
+                                       tax_efficiency=existing.tax_efficiency, name=existing.name))
+            continue
+        asset_class, tax_eff, name = classify_svc.classify(ticker, item.description, item.asset_type)
+        db.add(TickerTag(ticker=ticker, asset_class=asset_class, tax_efficiency=tax_eff, name=name))
+        out.append(TickerTagSchema(ticker=ticker, asset_class=asset_class,
+                                   tax_efficiency=tax_eff, name=name))
+    await db.commit()
+    return out
 
 
 @router.post("/suggest")

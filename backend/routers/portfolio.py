@@ -20,7 +20,7 @@ async def analyze(req: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/project", response_model=ProjectResponse)
 async def project(req: ProjectRequest):
-    """Monte Carlo + deterministic projection of the portfolio forward. Pure math —
+    """Monte Carlo + deterministic projection of the portfolio forward. Pure math -
     no DB access needed."""
     return projections.project(
         req.value_by_class,

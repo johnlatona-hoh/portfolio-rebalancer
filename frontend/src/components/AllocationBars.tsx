@@ -18,7 +18,12 @@ export default function AllocationBars({ blended, title }: Props) {
         {blended.map((b) => (
           <div key={b.asset_class}>
             <div className="flex justify-between text-sm mb-1">
-              <span>{b.asset_class}</span>
+              <span>
+                {b.group && b.group !== b.asset_class && (
+                  <span className="text-muted">{b.group} · </span>
+                )}
+                {b.asset_class}
+              </span>
               <span className="text-muted">
                 {fmtPct(b.pct)} <span className="opacity-60">/ tgt {fmtPct(b.target_pct)}</span>
               </span>

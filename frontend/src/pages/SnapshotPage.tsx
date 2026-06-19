@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { saveSnapshot, loadSnapshot } from "../api/client";
 import { usePortfolio } from "../state/portfolio";
+import { accountsFromHoldings } from "../utils/schwabParse";
 
 export default function SnapshotPage() {
   const nav = useNavigate();
-  const { holdings, targets, setHoldings, setTargets, loaded } = usePortfolio();
+  const { holdings, targets, setAccounts, setTargets, loaded } = usePortfolio();
   const [savePin, setSavePin] = useState("");
   const [label, setLabel] = useState("");
   const [loadPin, setLoadPin] = useState("");
@@ -37,7 +38,7 @@ export default function SnapshotPage() {
     setMsg(null);
     try {
       const res = await loadSnapshot(loadPin);
-      if (res.payload?.holdings) setHoldings(res.payload.holdings);
+      if (res.payload?.holdings) setAccounts(accountsFromHoldings(res.payload.holdings));
       if (res.payload?.targets) setTargets(res.payload.targets);
       setMsg({ kind: "ok", text: "Snapshot loaded. Opening dashboard…" });
       setTimeout(() => nav("/dashboard"), 600);

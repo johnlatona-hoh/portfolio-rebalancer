@@ -19,7 +19,8 @@ export interface Holding {
 }
 
 export interface ClassAllocation {
-  asset_class: string;
+  asset_class: string; // sub-class, e.g. "Muni Bond"
+  group: string;       // display parent, e.g. "Bond"
   value: number;
   pct: number;
   target_pct: number;
@@ -116,6 +117,13 @@ export async function listTags(): Promise<TickerTag[]> {
 
 export async function upsertTag(tag: TickerTag): Promise<TickerTag> {
   const { data } = await api.post<TickerTag>("/tags", tag);
+  return data;
+}
+
+export async function autoClassifyTags(
+  items: { ticker: string; description?: string; asset_type?: string }[]
+): Promise<TickerTag[]> {
+  const { data } = await api.post<TickerTag[]>("/tags/auto", { items });
   return data;
 }
 

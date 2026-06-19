@@ -26,7 +26,7 @@ class TickerTag(Base):
 class Snapshot(Base):
     """A PIN-keyed, encrypted point-in-time portfolio capture. The payload is an
     encrypted JSON blob (holdings + targets + computed trades). It is PII-light:
-    tickers, quantities, and account *types* only — no names or account numbers."""
+    tickers, quantities, and account *types* only - no names or account numbers."""
 
     __tablename__ = "snapshots"
 

@@ -11,7 +11,7 @@ from routers import portfolio, tags, snapshots, advisor
 
 async def run_migrations():
     """Add new columns to existing tables if they don't exist yet, so deploys self-heal.
-    (No entries needed yet — create_tables() builds the current schema on first boot.)"""
+    (No entries needed yet - create_tables() builds the current schema on first boot.)"""
     migrations: list[str] = []
     if not migrations:
         return

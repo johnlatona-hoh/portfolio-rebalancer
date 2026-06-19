@@ -1,6 +1,6 @@
 """Pure-Python tax-aware rebalancing engine.
 
-No DB or network — works on plain dicts so it is trivially unit-testable:
+No DB or network - works on plain dicts so it is trivially unit-testable:
   holding = {account_name, account_type, ticker, quantity, cost_basis, current_value}
   tags    = {ticker: {"asset_class": str, "tax_efficiency": str}}
 
@@ -10,20 +10,26 @@ Asset-location principles implemented (see the tax-efficient asset-location guid
   - High-growth / tax-efficient equity belongs in tax-free (Roth) or taxable.
 """
 
-from constants import ASSET_CLASSES
+from constants import ASSET_CLASSES, parent_of
 
-# Where to *sell* from, in order — tax-advantaged first so we don't realize gains.
-SELL_ORDER = ["tax_deferred", "tax_free", "taxable"]
-
-# Where to *buy* a new position, by the holding's tax-efficiency, in preference order.
-BUY_ORDER = {
-    "inefficient": ["tax_deferred", "tax_free", "taxable"],
-    "efficient":   ["tax_free", "taxable", "tax_deferred"],
-    "neutral":     ["taxable", "tax_deferred", "tax_free"],
+# Per-account-type fill preference: which asset classes to place in each account type
+# first. Tax-deferred soaks up tax-inefficient income (bonds, REITs); tax-free (Roth)
+# takes the highest-growth equity; taxable gets tax-efficient equity, cash, and munis.
+PLACEMENT = {
+    # tax-inefficient income (taxable bonds, REITs, gold, crypto, alts) first; munis last.
+    "tax_deferred": ["Taxable Bond", "REITs", "Other Alternatives", "Gold & Commodities",
+                     "Crypto", "International", "US Stock", "Muni Bond", "Cash"],
+    # highest-growth, permanently-tax-free assets first; munis/cash wasted here -> last.
+    "tax_free":     ["Crypto", "US Stock", "International", "Gold & Commodities",
+                     "Other Alternatives", "REITs", "Taxable Bond", "Muni Bond", "Cash"],
+    # tax-efficient sleeves: munis (tax-exempt!) and broad equity first; inefficient last.
+    "taxable":      ["Muni Bond", "US Stock", "International", "Cash", "Gold & Commodities",
+                     "Other Alternatives", "Taxable Bond", "REITs", "Crypto"],
 }
 
-# The "ideal" account type for a holding given its tax-efficiency, for grading.
-# A holding is "misplaced" only when a tax-inefficient asset sits in a taxable account.
+# Account types claim their preferred (scarce) classes in this order.
+_ACCOUNT_FILL_ORDER = {"tax_deferred": 0, "tax_free": 1, "taxable": 2}
+
 _TAX_NOTE_SELL = {
     "tax_deferred": "no taxable event",
     "tax_free": "no taxable event",
@@ -85,86 +91,79 @@ def compute_deltas(blended, total, targets):
     return deltas
 
 
-def _accounts_holding_class(holdings, tags, cls):
-    """Map account_name -> {account_type, value} holding the given class."""
-    out: dict[str, dict] = {}
+def _sell_note(cls, account_type):
+    # Reducing a Cash position just deploys cash - no gain is ever realized.
+    if cls == "Cash":
+        return "deploying cash; no gain realized"
+    return _TAX_NOTE_SELL[account_type]
+
+
+def _ticker_for(holdings, account_name, cls, tags):
+    """A representative ticker of `cls` held in `account_name`, for labeling a SELL."""
     for h in holdings:
-        if _class_of(h["ticker"], tags) == cls:
-            a = out.setdefault(h["account_name"], {"account_type": h["account_type"], "value": 0.0, "ticker": h["ticker"]})
-            a["value"] += h["current_value"]
-    return out
+        if h["account_name"] == account_name and _class_of(h["ticker"], tags) == cls:
+            return h["ticker"]
+    return None
 
 
-def _all_accounts(holdings):
-    """Map account_name -> account_type for every account in the portfolio."""
-    return {h["account_name"]: h["account_type"] for h in holdings}
+def target_composition(holdings, targets, tags, total):
+    """Decide what each account should hold, by asset class, keeping each account's
+    total value fixed (no inter-account transfers) and honoring asset-location
+    preferences. Returns {account_name: {asset_class: dollars}}.
 
-
-def plan_trades(holdings, deltas, tags):
-    """Produce a tax-aware BUY/SELL list satisfying the per-class deltas.
-
-    Sells are sourced from tax-advantaged accounts first (avoid realizing gains).
-    Buys are placed in the account type that best fits the asset's tax profile.
+    Tax-advantaged accounts get first claim on their preferred classes, so scarce
+    tax-inefficient assets land in tax-deferred and growth equity in Roth before the
+    taxable account fills with whatever remains.
     """
+    remaining = {c: total * (targets.get(c, 0.0) / 100.0) for c in ASSET_CLASSES}
+    accounts = account_breakdown(holdings, tags)
+    ordered = sorted(accounts, key=lambda a: _ACCOUNT_FILL_ORDER.get(a["account_type"], 3))
+
+    comp: dict[str, dict] = {a["account_name"]: {} for a in accounts}
+    for a in ordered:
+        cap = a["value"]
+        pref = PLACEMENT.get(a["account_type"], ASSET_CLASSES)
+        # primary pass: preferred classes; fallback pass: anything still owed
+        for cls in pref + [c for c in ASSET_CLASSES if c not in pref]:
+            if cap <= 0.005:
+                break
+            take = min(cap, remaining.get(cls, 0.0))
+            if take <= 0.005:
+                continue
+            comp[a["account_name"]][cls] = comp[a["account_name"]].get(cls, 0.0) + take
+            cap -= take
+            remaining[cls] -= take
+    return comp
+
+
+def plan_trades(holdings, targets, tags, total):
+    """Produce an execution-ready, tax-aware BUY/SELL list. Each account is rebalanced
+    in place toward its target composition, so an account's buys are funded by its own
+    sells (cash-neutral per account; never over-allocated)."""
+    comp = target_composition(holdings, targets, tags, total)
+    accounts = account_breakdown(holdings, tags)
     trades = []
-    all_accounts = _all_accounts(holdings)
 
-    for cls, amount in deltas.items():
-        if amount < 0:  # SELL |amount| of this class
-            remaining = -amount
-            holders = _accounts_holding_class(holdings, tags, cls)
-            ordered = sorted(
-                holders.items(),
-                key=lambda kv: SELL_ORDER.index(kv[1]["account_type"])
-                if kv[1]["account_type"] in SELL_ORDER else len(SELL_ORDER),
-            )
-            for name, info in ordered:
-                if remaining <= 0:
-                    break
-                take = min(info["value"], remaining)
-                if take <= 0:
-                    continue
+    for a in accounts:
+        name, atype = a["account_name"], a["account_type"]
+        current = a["by_class"]
+        target = comp.get(name, {})
+        for cls in sorted(set(current) | set(target)):
+            diff = round(target.get(cls, 0.0) - current.get(cls, 0.0), 2)
+            if abs(diff) < 0.01:
+                continue
+            if diff > 0:
                 trades.append({
-                    "account_name": name,
-                    "account_type": info["account_type"],
-                    "action": "SELL",
-                    "asset_class": cls,
-                    "ticker": info.get("ticker"),
-                    "amount": round(take, 2),
-                    "tax_note": _TAX_NOTE_SELL[info["account_type"]],
+                    "account_name": name, "account_type": atype, "action": "BUY",
+                    "asset_class": cls, "ticker": None, "amount": diff,
+                    "tax_note": _TAX_NOTE_BUY[atype],
                 })
-                remaining -= take
-
-        elif amount > 0:  # BUY this class
-            # pick the best-fitting account type that actually exists
-            tax_eff = "neutral"
-            for h in holdings:
-                if _class_of(h["ticker"], tags) == cls:
-                    tax_eff = tags.get(h["ticker"], {}).get("tax_efficiency", "neutral")
-                    break
-            pref = BUY_ORDER.get(tax_eff, BUY_ORDER["neutral"])
-            target_name = None
-            target_type = None
-            for atype in pref:
-                for name, t in all_accounts.items():
-                    if t == atype:
-                        target_name, target_type = name, atype
-                        break
-                if target_name:
-                    break
-            if target_name is None and all_accounts:
-                target_name, target_type = next(iter(all_accounts.items()))
-            if target_name:
+            else:
                 trades.append({
-                    "account_name": target_name,
-                    "account_type": target_type,
-                    "action": "BUY",
-                    "asset_class": cls,
-                    "ticker": None,
-                    "amount": round(amount, 2),
-                    "tax_note": _TAX_NOTE_BUY[target_type],
+                    "account_name": name, "account_type": atype, "action": "SELL",
+                    "asset_class": cls, "ticker": _ticker_for(holdings, name, cls, tags),
+                    "amount": -diff, "tax_note": _sell_note(cls, atype),
                 })
-
     return trades
 
 
@@ -180,7 +179,7 @@ def location_grade(holdings, tags):
             continue
         if tag["tax_efficiency"] == "inefficient" and h["account_type"] == "taxable":
             misplaced.append(
-                f"{h['ticker']} ({tag['asset_class']}) is in a taxable account — "
+                f"{h['ticker']} ({tag['asset_class']}) is in a taxable account - "
                 f"consider moving it to a tax-deferred account."
             )
 
@@ -209,7 +208,7 @@ def analyze(holdings, targets, tags):
     """Top-level orchestration used by the /analyze router."""
     blended, total = roll_up(holdings, tags)
     deltas = compute_deltas(blended, total, targets)
-    trades = plan_trades(holdings, deltas, tags)
+    trades = plan_trades(holdings, targets, tags, total)
     grade = location_grade(holdings, tags)
 
     blended_view = []
@@ -219,6 +218,7 @@ def analyze(holdings, targets, tags):
             continue
         blended_view.append({
             "asset_class": cls,
+            "group": parent_of(cls),
             "value": round(val, 2),
             "pct": round((val / total * 100) if total else 0.0, 2),
             "target_pct": float(targets.get(cls, 0.0)),

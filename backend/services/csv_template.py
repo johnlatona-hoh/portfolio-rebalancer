@@ -1,6 +1,6 @@
 """Canonical CSV schema for portfolio upload + a parser/validator.
 
-The frontend parses the CSV client-side (Zero-PII — data need not leave the browser
+The frontend parses the CSV client-side (Zero-PII - data need not leave the browser
 to be read), but this module is the single source of truth for the column contract and
 is reused by any server-side validation. One row = one holding.
 """

@@ -27,7 +27,8 @@ class AnalyzeRequest(BaseModel):
 # ---------- Allocation + trades output ----------
 
 class ClassAllocation(BaseModel):
-    asset_class: str
+    asset_class: str            # sub-class (e.g. "Muni Bond")
+    group: str                  # display parent (e.g. "Bond")
     value: float
     pct: float
     target_pct: float
@@ -52,7 +53,7 @@ class Trade(BaseModel):
 
 
 class LocationGrade(BaseModel):
-    grade: str                  # A–F
+    grade: str                  # A-F
     misplaced_count: int
     total_holdings: int
     notes: list[str]
@@ -64,7 +65,7 @@ class AnalyzeResponse(BaseModel):
     by_account: list[AccountAllocation]
     trades: list[Trade]
     grade: LocationGrade
-    unknown_tickers: list[str]  # tickers with no tag — caller should classify
+    unknown_tickers: list[str]  # tickers with no tag - caller should classify
 
 
 # ---------- Projection ----------
@@ -104,6 +105,16 @@ class TickerTagSuggestRequest(BaseModel):
     ticker: str
 
 
+class AutoTagItem(BaseModel):
+    ticker: str
+    description: str = ""
+    asset_type: str = ""
+
+
+class AutoTagRequest(BaseModel):
+    items: list[AutoTagItem]
+
+
 # ---------- Snapshots ----------
 
 class SnapshotSaveRequest(BaseModel):
@@ -138,7 +149,7 @@ class SnapshotLoadResponse(BaseModel):
 # ---------- Advisor ----------
 
 class AdvisorRequest(BaseModel):
-    # anonymized portfolio summary — classes, account types, grade. No PII.
+    # anonymized portfolio summary - classes, account types, grade. No PII.
     summary: dict
 
 

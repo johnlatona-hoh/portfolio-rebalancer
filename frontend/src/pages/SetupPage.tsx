@@ -1,9 +1,17 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Papa from "papaparse";
-import { listTags, type Holding, type AccountType } from "../api/client";
+import { listTags, autoClassifyTags, type Holding, type AccountType } from "../api/client";
 import { usePortfolio } from "../state/portfolio";
-import { ASSET_CLASSES } from "../utils/assetClass";
+import { ASSET_CLASSES, ACCOUNT_TYPE_LABELS } from "../utils/assetClass";
+import { fmtMoney } from "../utils/money";
+import {
+  parseSchwabCsv,
+  holdingsForAccount,
+  inferAccountType,
+  type ParsedAccount,
+  type TickerMeta,
+} from "../utils/schwabParse";
 import TickerTagEditor from "../components/TickerTagEditor";
 
 const TEMPLATE =
@@ -16,21 +24,68 @@ const TEMPLATE =
 const ACCOUNT_TYPES: AccountType[] = ["taxable", "tax_deferred", "tax_free"];
 
 const DEFAULT_TARGETS: Record<string, number> = {
-  "US Stock": 45,
-  International: 20,
-  Bond: 25,
+  "US Stock": 40,
+  International: 18,
+  "Muni Bond": 8,
+  "Taxable Bond": 14,
   REITs: 5,
   Cash: 3,
-  Alternatives: 2,
+  "Gold & Commodities": 4,
+  Crypto: 4,
+  "Other Alternatives": 4,
 };
+
+/** Fallback parser for the simple canonical template, grouped into accounts. */
+function parseTemplateCsv(text: string, fileName: string): ParsedAccount[] {
+  const res = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
+  const groups = new Map<string, ParsedAccount>();
+  for (const row of res.data) {
+    const ticker = (row.ticker ?? "").trim().toUpperCase();
+    if (!ticker) continue;
+    const account_name = (row.account_name ?? "").trim() || "Unnamed";
+    const typeRaw = (row.account_type ?? "").trim() as AccountType;
+    const account_type = ACCOUNT_TYPES.includes(typeRaw) ? typeRaw : inferAccountType(account_name);
+    if (!groups.has(account_name)) {
+      groups.set(account_name, {
+        fileName,
+        accountName: account_name,
+        accountType: account_type,
+        holdings: [],
+        cashValue: 0,
+        positionCount: 0,
+        meta: {},
+      });
+    }
+    const acct = groups.get(account_name)!;
+    const current_value = Number(row.current_value) || 0;
+    if (ticker === "CASH") acct.cashValue += current_value;
+    acct.holdings.push({
+      account_name,
+      account_type,
+      ticker,
+      quantity: Number(row.quantity) || 0,
+      cost_basis: Number(row.cost_basis) || 0,
+      current_value,
+    });
+    if (ticker !== "CASH") acct.positionCount += 1;
+  }
+  return [...groups.values()];
+}
 
 export default function SetupPage() {
   const nav = useNavigate();
-  const { holdings, setHoldings, targets, setTargets } = usePortfolio();
+  const { accounts, setAccounts, holdings, targets, setTargets, reset } = usePortfolio();
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [unknown, setUnknown] = useState<string[]>([]);
+  const [classifying, setClassifying] = useState(false);
   const [localTargets, setLocalTargets] = useState<Record<string, number>>(
     Object.keys(targets).length ? targets : DEFAULT_TARGETS
+  );
+
+  const totalCash = useMemo(() => accounts.reduce((s, a) => s + a.cashValue, 0), [accounts]);
+  const totalValue = useMemo(
+    () => holdings.reduce((s, h) => s + h.current_value, 0),
+    [holdings]
   );
 
   function downloadTemplate() {
@@ -43,55 +98,85 @@ export default function SetupPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function handleFile(file: File) {
+  /** Find unknown tickers and auto-classify them from their broker descriptions
+   *  (no manual tagging, no AI). Only falls back to the manual editor if a ticker
+   *  has no description to classify from. */
+  async function resolveUnknown(accts: ParsedAccount[]) {
+    const hs = accts.flatMap(holdingsForAccount);
+    const metaMap: Record<string, TickerMeta> = Object.assign({}, ...accts.map((a) => a.meta));
+
+    const tags = await listTags();
+    const known = new Set(tags.map((t) => t.ticker));
+    let missing = [...new Set(hs.map((h) => h.ticker))].filter((t) => !known.has(t));
+
+    if (missing.length) {
+      setClassifying(true);
+      try {
+        await autoClassifyTags(
+          missing.map((t) => ({
+            ticker: t,
+            description: metaMap[t]?.description ?? "",
+            asset_type: metaMap[t]?.assetType ?? "",
+          }))
+        );
+        const after = new Set((await listTags()).map((t) => t.ticker));
+        missing = missing.filter((t) => !after.has(t));
+      } finally {
+        setClassifying(false);
+      }
+    }
+    setUnknown(missing);
+  }
+
+  async function handleFiles(files: FileList) {
     setParseErrors([]);
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (res) => {
-        const errors: string[] = [];
-        const parsed: Holding[] = [];
-        (res.data as any[]).forEach((row, idx) => {
-          const ln = idx + 2;
-          const ticker = (row.ticker ?? "").trim().toUpperCase();
-          const acctType = (row.account_type ?? "").trim();
-          if (!ticker) return; // skip blank
-          if (!ACCOUNT_TYPES.includes(acctType as AccountType)) {
-            errors.push(`Row ${ln} (${ticker}): account_type "${acctType}" invalid.`);
-            return;
-          }
-          const cv = Number(row.current_value);
-          if (Number.isNaN(cv)) {
-            errors.push(`Row ${ln} (${ticker}): current_value not a number.`);
-            return;
-          }
-          parsed.push({
-            account_name: (row.account_name ?? "").trim() || "Unnamed",
-            account_type: acctType as AccountType,
-            ticker,
-            quantity: Number(row.quantity) || 0,
-            cost_basis: Number(row.cost_basis) || 0,
-            current_value: cv,
-          });
-        });
+    const errors: string[] = [];
+    const newAccounts: ParsedAccount[] = [];
 
-        if (errors.length) {
-          setParseErrors(errors);
-          return;
+    for (const file of Array.from(files)) {
+      try {
+        const text = await file.text();
+        const schwab = parseSchwabCsv(text, file.name);
+        if (schwab) {
+          newAccounts.push(schwab);
+        } else {
+          const tmpl = parseTemplateCsv(text, file.name);
+          if (tmpl.length === 0) {
+            errors.push(`${file.name}: no recognizable holdings (not a Schwab export or template).`);
+          } else {
+            newAccounts.push(...tmpl);
+          }
         }
-        setHoldings(parsed);
+      } catch (e: any) {
+        errors.push(`${file.name}: ${e?.message ?? "could not read file"}`);
+      }
+    }
 
-        // detect unknown tickers against the server tag map
-        const tags = await listTags();
-        const known = new Set(tags.map((t) => t.ticker));
-        const missing = [...new Set(parsed.map((h) => h.ticker))].filter((t) => !known.has(t));
-        setUnknown(missing);
-      },
-      error: (e) => setParseErrors([e.message]),
-    });
+    if (errors.length) setParseErrors(errors);
+    if (newAccounts.length) {
+      const merged = [...accounts, ...newAccounts];
+      setAccounts(merged);
+      await resolveUnknown(merged);
+    }
+  }
+
+  function setAccountType(idx: number, type: AccountType) {
+    setAccounts(accounts.map((a, i) => (i === idx ? { ...a, accountType: type } : a)));
+  }
+
+  function removeAccount(idx: number) {
+    setAccounts(accounts.filter((_, i) => i !== idx));
+  }
+
+  function clearAll() {
+    reset();
+    setUnknown([]);
+    setParseErrors([]);
+    setLocalTargets(DEFAULT_TARGETS);
   }
 
   const targetSum = Object.values(localTargets).reduce((a, b) => a + b, 0);
+  const cashPct = totalValue > 0 ? (totalCash / totalValue) * 100 : 0;
 
   function proceed() {
     setTargets(localTargets);
@@ -101,30 +186,45 @@ export default function SetupPage() {
   return (
     <div className="max-w-3xl space-y-8">
       <section>
-        <h2 className="text-lg font-semibold mb-2">1. Upload your holdings</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold">1. Upload your holdings</h2>
+          {accounts.length > 0 && (
+            <button onClick={clearAll} className="text-sm px-3 py-1.5 rounded border border-border hover:bg-card">
+              Clear all
+            </button>
+          )}
+        </div>
         <p className="text-sm text-muted mb-3">
-          Fill out the CSV template (one row per holding) and upload it. Data stays in your
-          browser — nothing is saved unless you explicitly create a snapshot.
+          Upload your <strong>Schwab position exports</strong> (one CSV per account) — the format
+          is detected automatically and any ticker is classified from its description. Select
+          several at once. Data stays in your browser; nothing is saved unless you create a
+          snapshot. (A simple CSV template is also supported.)
         </p>
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-3 items-center flex-wrap">
+          <label className="text-sm px-3 py-2 rounded bg-accent hover:bg-accent-hover cursor-pointer">
+            Upload CSV(s)
+            <input
+              type="file"
+              accept=".csv"
+              multiple
+              className="hidden"
+              onChange={(e) => e.target.files && handleFiles(e.target.files)}
+            />
+          </label>
           <button
             onClick={downloadTemplate}
             className="text-sm px-3 py-2 rounded border border-border hover:bg-card"
           >
-            Download CSV template
+            Download template
           </button>
-          <label className="text-sm px-3 py-2 rounded bg-accent hover:bg-accent-hover cursor-pointer">
-            Upload CSV
-            <input
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-            />
-          </label>
-          {holdings.length > 0 && (
-            <span className="text-sm text-good">{holdings.length} holdings loaded</span>
+          {accounts.length > 0 && (
+            <span className="text-sm text-good">
+              {accounts.length} account{accounts.length > 1 ? "s" : ""},{" "}
+              {holdings.filter((h) => h.ticker !== "CASH").length} positions ·{" "}
+              {fmtMoney(totalValue)}
+            </span>
           )}
+          {classifying && <span className="text-sm text-muted">classifying tickers…</span>}
         </div>
         {parseErrors.length > 0 && (
           <ul className="mt-3 text-sm text-bad list-disc pl-5">
@@ -133,12 +233,54 @@ export default function SetupPage() {
             ))}
           </ul>
         )}
+
+        {accounts.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {accounts.map((a, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 p-2 rounded border border-border text-sm"
+              >
+                <span className="flex-1 font-medium">{a.accountName}</span>
+                <span className="text-muted">{a.positionCount} positions</span>
+                {a.cashValue > 0 && (
+                  <span className="text-warn">+ {fmtMoney(a.cashValue)} cash</span>
+                )}
+                <select
+                  value={a.accountType}
+                  onChange={(e) => setAccountType(i, e.target.value as AccountType)}
+                  className="bg-surface border border-border rounded px-2 py-1"
+                >
+                  {ACCOUNT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {ACCOUNT_TYPE_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+                <button onClick={() => removeAccount(i)} className="text-bad px-1">
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {totalCash > 0 && (
+          <div className="mt-3 p-3 rounded border border-warn/50 bg-warn/10 text-sm text-warn">
+            <strong>{fmtMoney(totalCash)} in cash</strong> ({cashPct.toFixed(1)}% of the
+            portfolio) is counted as a Cash position. If some of this is uninvested dry powder,
+            your Cash target below determines how much the rebalancer suggests deploying.
+          </div>
+        )}
       </section>
 
       {unknown.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold mb-2">2. Classify unknown tickers</h2>
-          <TickerTagEditor tickers={unknown} onAllResolved={() => setUnknown([])} />
+          <h2 className="text-lg font-semibold mb-2">2. Classify remaining tickers</h2>
+          <p className="text-sm text-muted mb-2">
+            These had no description to auto-classify from. Set them manually.
+          </p>
+          <TickerTagEditor tickers={unknown} onAllResolved={() => resolveUnknown(accounts)} />
         </section>
       )}
 

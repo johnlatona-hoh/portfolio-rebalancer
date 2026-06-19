@@ -12,7 +12,8 @@ def _tags():
     return {
         "VTI":  {"asset_class": "US Stock",      "tax_efficiency": "efficient"},
         "VXUS": {"asset_class": "International",  "tax_efficiency": "efficient"},
-        "BND":  {"asset_class": "Bond",          "tax_efficiency": "inefficient"},
+        "BND":  {"asset_class": "Taxable Bond",  "tax_efficiency": "inefficient"},
+        "VTEB": {"asset_class": "Muni Bond",     "tax_efficiency": "efficient"},
         "VNQ":  {"asset_class": "REITs",         "tax_efficiency": "inefficient"},
         "VMFXX": {"asset_class": "Cash",         "tax_efficiency": "neutral"},
     }
@@ -41,7 +42,7 @@ def test_roll_up_blends_values_across_accounts_by_class():
 
     assert total == 100000
     assert blended["US Stock"] == 80000
-    assert blended["Bond"] == 20000
+    assert blended["Taxable Bond"] == 20000
 
 
 def test_roll_up_reports_per_account_breakdown():
@@ -60,12 +61,12 @@ def test_roll_up_reports_per_account_breakdown():
 # ---------- compute_deltas ----------
 
 def test_compute_deltas_returns_buy_and_sell_amounts():
-    blended = {"US Stock": 80000, "Bond": 20000}
-    targets = {"US Stock": 60, "Bond": 40}  # percentages
+    blended = {"US Stock": 80000, "Taxable Bond": 20000}
+    targets = {"US Stock": 60, "Taxable Bond": 40}  # percentages
     deltas = rebalance.compute_deltas(blended, 100000, targets)
 
-    assert deltas["US Stock"] == -20000  # overweight -> sell
-    assert deltas["Bond"] == 20000       # underweight -> buy
+    assert deltas["US Stock"] == -20000       # overweight -> sell
+    assert deltas["Taxable Bond"] == 20000    # underweight -> buy
 
 
 # ---------- plan_trades: tax-awareness ----------
@@ -78,7 +79,7 @@ def test_plan_trades_prefers_tax_advantaged_accounts_over_taxable():
         _holding("IRA", "tax_deferred", "VTI", 30000),
         _holding("IRA", "tax_deferred", "BND", 20000),
     ]
-    targets = {"US Stock": 60, "Bond": 40}  # need to sell 20k US Stock, buy 20k Bond
+    targets = {"US Stock": 60, "Taxable Bond": 40}  # sell 20k US Stock, buy 20k Bond
     result = rebalance.analyze(holdings, targets, _tags())
 
     taxable_sells = [
@@ -89,7 +90,71 @@ def test_plan_trades_prefers_tax_advantaged_accounts_over_taxable():
 
     ira_activity = [t for t in result["trades"] if t["account_type"] == "tax_deferred"]
     assert any(t["action"] == "SELL" and t["asset_class"] == "US Stock" for t in ira_activity)
-    assert any(t["action"] == "BUY" and t["asset_class"] == "Bond" for t in ira_activity)
+    assert any(t["action"] == "BUY" and t["asset_class"] == "Taxable Bond" for t in ira_activity)
+
+
+def test_trades_are_cash_neutral_within_each_account():
+    """Execution-ready: each account is rebalanced in place, so the dollars bought in an
+    account must equal the dollars sold there (no inter-account transfers, no account
+    over-allocated beyond its own total)."""
+    holdings = [
+        _holding("Brokerage", "taxable", "VTI", 60000),
+        _holding("Brokerage", "taxable", "VNQ", 40000),   # 100k taxable
+        _holding("IRA", "tax_deferred", "VTI", 50000),
+        _holding("IRA", "tax_deferred", "BND", 50000),     # 100k tax_deferred
+        _holding("Roth", "tax_free", "VTI", 50000),        # 50k tax_free
+    ]
+    targets = {"US Stock": 50, "Taxable Bond": 30, "REITs": 10, "International": 10}
+    result = rebalance.analyze(holdings, targets, _tags())
+
+    totals, buys, sells = {}, {}, {}
+    for h in holdings:
+        totals[h["account_name"]] = totals.get(h["account_name"], 0) + h["current_value"]
+    for t in result["trades"]:
+        bucket = buys if t["action"] == "BUY" else sells
+        bucket[t["account_name"]] = bucket.get(t["account_name"], 0) + t["amount"]
+
+    for acct, tot in totals.items():
+        b, s = buys.get(acct, 0), sells.get(acct, 0)
+        assert abs(b - s) < 1.0, f"{acct} not cash-neutral: buys {b} vs sells {s}"
+        assert b <= tot + 1.0, f"{acct} over-allocated: buys {b} > account total {tot}"
+
+
+def test_selling_cash_from_taxable_does_not_warn_about_capital_gains():
+    """Reducing a Cash position deploys cash; it never realizes a capital gain, so the
+    tax note must not say it might."""
+    holdings = [
+        _holding("Brokerage", "taxable", "VMFXX", 50000),  # Cash overweight
+        _holding("Brokerage", "taxable", "VTI", 50000),
+    ]
+    targets = {"US Stock": 100, "Cash": 0}  # deploy all cash into US Stock
+    result = rebalance.analyze(holdings, targets, _tags())
+
+    cash_sells = [t for t in result["trades"] if t["asset_class"] == "Cash" and t["action"] == "SELL"]
+    assert cash_sells, "expected a Cash sell"
+    for t in cash_sells:
+        assert "capital gains" not in t["tax_note"].lower()
+
+
+def test_muni_bonds_are_not_churned_out_of_taxable():
+    """A tax-exempt muni bond held in taxable should stay put - the engine must not
+    sell it to relocate 'bonds' to tax-deferred (that would needlessly realize gains).
+    The taxable-bond sleeve, by contrast, belongs in tax-deferred."""
+    holdings = [
+        _holding("Brokerage", "taxable", "VTEB", 50000),     # muni, efficient - keep in taxable
+        _holding("Brokerage", "taxable", "VTI", 50000),
+        _holding("IRA", "tax_deferred", "BND", 50000),        # taxable bond - belongs here
+        _holding("IRA", "tax_deferred", "VTI", 50000),
+    ]
+    # targets already match current blended (US 50, Muni 25, Taxable Bond 25) -> ideally no trades
+    targets = {"US Stock": 50, "Muni Bond": 25, "Taxable Bond": 25}
+    result = rebalance.analyze(holdings, targets, _tags())
+
+    muni_sells = [
+        t for t in result["trades"]
+        if t["asset_class"] == "Muni Bond" and t["action"] == "SELL"
+    ]
+    assert muni_sells == [], f"munis should not be sold, got {muni_sells}"
 
 
 # ---------- location_grade ----------

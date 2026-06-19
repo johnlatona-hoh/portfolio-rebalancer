@@ -22,7 +22,7 @@ def _fernet() -> Fernet:
     key = settings.SNAPSHOT_ENCRYPTION_KEY
     if not key:
         raise RuntimeError(
-            "SNAPSHOT_ENCRYPTION_KEY is not set — cannot encrypt/decrypt snapshots. "
+            "SNAPSHOT_ENCRYPTION_KEY is not set - cannot encrypt/decrypt snapshots. "
             "Generate one with: python -c \"from cryptography.fernet import Fernet; "
             "print(Fernet.generate_key().decode())\""
         )

@@ -1,14 +1,19 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useMemo, ReactNode } from "react";
 import type { Holding } from "../api/client";
+import { holdingsForAccount, type ParsedAccount } from "../utils/schwabParse";
 
 /**
  * In-browser portfolio working state, shared across pages. Nothing here is persisted
- * server-side except via an explicit, PIN-keyed snapshot. Refreshing the tab clears it.
+ * server-side except via an explicit, PIN-keyed snapshot. Clearing or refreshing wipes it.
+ *
+ * `accounts` is the source of truth (parsed uploads); `holdings` is derived from it so a
+ * single `reset()` fully clears the session for repeated use.
  */
 interface PortfolioState {
+  accounts: ParsedAccount[];
+  setAccounts: (a: ParsedAccount[]) => void;
   holdings: Holding[];
   targets: Record<string, number>;
-  setHoldings: (h: Holding[]) => void;
   setTargets: (t: Record<string, number>) => void;
   reset: () => void;
   loaded: boolean;
@@ -17,17 +22,27 @@ interface PortfolioState {
 const Ctx = createContext<PortfolioState | null>(null);
 
 export function PortfolioProvider({ children }: { children: ReactNode }) {
-  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [accounts, setAccounts] = useState<ParsedAccount[]>([]);
   const [targets, setTargets] = useState<Record<string, number>>({});
 
+  const holdings = useMemo(() => accounts.flatMap(holdingsForAccount), [accounts]);
+
   const reset = () => {
-    setHoldings([]);
+    setAccounts([]);
     setTargets({});
   };
 
   return (
     <Ctx.Provider
-      value={{ holdings, targets, setHoldings, setTargets, reset, loaded: holdings.length > 0 }}
+      value={{
+        accounts,
+        setAccounts,
+        holdings,
+        targets,
+        setTargets,
+        reset,
+        loaded: holdings.length > 0,
+      }}
     >
       {children}
     </Ctx.Provider>
@@ -39,3 +54,7 @@ export function usePortfolio(): PortfolioState {
   if (!ctx) throw new Error("usePortfolio must be used within PortfolioProvider");
   return ctx;
 }
+
+// re-export so consumers can build holdings from a snapshot if needed
+export { holdingsForAccount };
+export type { ParsedAccount };

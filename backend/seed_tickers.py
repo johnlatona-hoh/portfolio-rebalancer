@@ -2,7 +2,7 @@
 
 Run once after the DB is up (locally or as a one-off on Render):
     python seed_tickers.py
-Safe to re-run — it upserts and leaves any user-edited tags' newer values in place
+Safe to re-run - it upserts and leaves any user-edited tags' newer values in place
 only insofar as it overwrites with the canonical seed values for seeded tickers.
 """
 
