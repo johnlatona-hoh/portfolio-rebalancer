@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { listTags, autoClassifyTags, type Holding, type AccountType } from "../api/client";
 import { usePortfolio } from "../state/portfolio";
 import { ASSET_CLASSES, ACCOUNT_TYPE_LABELS } from "../utils/assetClass";
@@ -40,6 +41,7 @@ const DEFAULT_TARGETS: Record<string, number> = {
 
 export default function SetupPage() {
   const nav = useNavigate();
+  const queryClient = useQueryClient();
   const { accounts, setAccounts, holdings, targets, setTargets, reset } = usePortfolio();
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [unknown, setUnknown] = useState<string[]>([]);
@@ -79,7 +81,10 @@ export default function SetupPage() {
             asset_type: metaMap[t]?.assetType ?? "",
           }))
         );
-        const after = new Set((await listTags()).map((t) => t.ticker));
+        // Invalidate the shared tags cache so DashboardPage picks up newly classified tickers.
+        await queryClient.invalidateQueries({ queryKey: ["tags"] });
+        const freshTags = await listTags();
+        const after = new Set(freshTags.map((t) => t.ticker));
         missing = missing.filter((t) => !after.has(t));
       } finally {
         setClassifying(false);

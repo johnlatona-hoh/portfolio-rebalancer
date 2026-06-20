@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   analyzePortfolio,
   projectPortfolio,
@@ -11,7 +12,7 @@ import {
   type TickerTag,
 } from "../api/client";
 import { usePortfolio } from "../state/portfolio";
-import { parseSchwabCsv, parseTemplateCsv } from "../utils/schwabParse";
+import { parseSchwabCsv, parseFidelityCsv, parseVanguardCsv, parseTemplateCsv } from "../utils/schwabParse";
 import { ACCOUNT_TYPE_LABELS } from "../utils/assetClass";
 import { fmtMoney } from "../utils/money";
 import { deflatePoints } from "../utils/inflation";
@@ -40,7 +41,6 @@ export default function DashboardPage() {
   const { holdings, targets, loaded, accounts, setAccounts, loadPortfolio, refreshHoldings } = usePortfolio();
 
   // Live price refresh
-  const [pricing, setPricing] = useState(false);
   const [priceMsg, setPriceMsg] = useState<string | null>(null);
 
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
@@ -79,29 +79,34 @@ export default function DashboardPage() {
   const [insights, setInsights] = useState<string[] | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
 
-  // Tag map for inline holdings accordion
-  const [tagMap, setTagMap] = useState<Record<string, TickerTag>>({});
-
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    listTags()
-      .then((tags) => setTagMap(Object.fromEntries(tags.map((t) => [t.ticker, t]))))
-      .catch(() => {});
-  }, []);
+  // Tag map — cached for 5 min; shared via QueryClient so SetupPage invalidates on classify.
+  const { data: tagList = [] } = useQuery<TickerTag[]>({ queryKey: ["tags"], queryFn: listTags });
+  const tagMap = useMemo(
+    () => Object.fromEntries(tagList.map((t) => [t.ticker, t])),
+    [tagList]
+  );
 
   const valueByClass = useMemo(
     () => (analysis ? Object.fromEntries(analysis.blended.map((b) => [b.asset_class, b.value])) : {}),
     [analysis]
   );
 
+  // Analysis mutation — variables are passed at call time to avoid stale closures.
+  const analyzeMutation = useMutation({
+    mutationFn: (p: { h: typeof holdings; t: typeof targets }) =>
+      analyzePortfolio(p.h, p.t, sliderRef.current / 100, bandRef.current),
+    onSuccess: setAnalysis,
+    onError: (e: { response?: { data?: { detail?: string } } }) =>
+      setError(e?.response?.data?.detail ?? "Analysis failed."),
+  });
+
   // Re-analyze using the latest committed slider + band (read from refs).
   const runAnalysis = useCallback(() => {
     if (!loaded) return;
     setError(null);
-    analyzePortfolio(holdings, targets, sliderRef.current / 100, bandRef.current)
-      .then(setAnalysis)
-      .catch((e) => setError(e?.response?.data?.detail ?? "Analysis failed."));
+    analyzeMutation.mutate({ h: holdings, t: targets });
   }, [holdings, targets, loaded]);
 
   // Re-analyze on portfolio change.
@@ -167,13 +172,9 @@ export default function DashboardPage() {
       : projection.benchmark_points;
   }, [projection, realDollars, inflationPct]);
 
-  async function refreshPrices() {
-    if (!loaded) return;
-    setPricing(true);
-    setPriceMsg(null);
-    try {
-      const tickers = [...new Set(holdings.map((h) => h.ticker).filter(Boolean))];
-      const quotes = await getPrices(tickers);
+  const priceMutation = useMutation({
+    mutationFn: (tickers: string[]) => getPrices(tickers),
+    onSuccess: (quotes, tickers) => {
       const n = Object.keys(quotes).length;
       if (n === 0) {
         setPriceMsg("No prices available right now (source may be unavailable).");
@@ -190,11 +191,16 @@ export default function DashboardPage() {
           (missing > 0 ? ` (${missing} kept their uploaded value)` : "") +
           ` - as of ${new Date().toLocaleDateString()}.`
       );
-    } catch {
-      setPriceMsg("Could not refresh prices. Try again later.");
-    } finally {
-      setPricing(false);
-    }
+    },
+    onError: () => setPriceMsg("Could not refresh prices. Try again later."),
+    onSettled: () => setPriceMsg((m) => m),
+  });
+
+  function refreshPrices() {
+    if (!loaded) return;
+    setPriceMsg(null);
+    const tickers = [...new Set(holdings.map((h) => h.ticker).filter(Boolean))];
+    priceMutation.mutate(tickers);
   }
 
   const [parseErrors, setParseErrors] = useState<string[]>([]);
@@ -210,11 +216,21 @@ export default function DashboardPage() {
         if (schwab) {
           newAccounts.push(schwab);
         } else {
-          const tmpl = parseTemplateCsv(text, file.name);
-          if (tmpl.length === 0) {
-            errors.push(`${file.name}: not a recognized Schwab export or template CSV.`);
+          const fidelity = parseFidelityCsv(text, file.name);
+          if (fidelity) {
+            newAccounts.push(...fidelity);
           } else {
-            newAccounts.push(...tmpl);
+            const vanguard = parseVanguardCsv(text, file.name);
+            if (vanguard) {
+              newAccounts.push(...vanguard);
+            } else {
+              const tmpl = parseTemplateCsv(text, file.name);
+              if (tmpl.length === 0) {
+                errors.push(`${file.name}: not a recognized Schwab, Fidelity, Vanguard, or template CSV.`);
+              } else {
+                newAccounts.push(...tmpl);
+              }
+            }
           }
         }
       } catch (e: unknown) {
@@ -292,11 +308,11 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-1 items-end">
               <button
                 onClick={refreshPrices}
-                disabled={pricing}
+                disabled={priceMutation.isPending}
                 className="text-xs px-2 py-1 rounded border border-border hover:bg-surface disabled:opacity-50 whitespace-nowrap"
                 title="Fetch the latest market prices and recompute each holding's value (quantity x price). Cached for 24h."
               >
-                {pricing ? "Refreshing…" : "↻ Refresh prices"}
+                {priceMutation.isPending ? "Refreshing…" : "↻ Refresh prices"}
               </button>
               <button
                 onClick={resetSettings}
