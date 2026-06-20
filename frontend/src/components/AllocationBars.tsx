@@ -82,6 +82,11 @@ export default function AllocationBars({ blended, title, holdings, tags, totalPo
                     )}
                   </div>
                 )}
+                {b.within_band && Math.abs(b.delta_value) < 1 && (
+                  <div className="text-xs mt-0.5 text-good opacity-80">
+                    on target (within band)
+                  </div>
+                )}
               </div>
 
               {/* inline holdings accordion */}

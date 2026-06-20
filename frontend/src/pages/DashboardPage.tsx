@@ -26,6 +26,7 @@ import InflationControls from "../components/InflationControls";
 import TipsBox from "../components/TipsBox";
 import TaxLossPanel from "../components/TaxLossPanel";
 import BenchmarkControl, { type Benchmark } from "../components/BenchmarkControl";
+import DriftBandControl from "../components/DriftBandControl";
 import RiskPanel from "../components/RiskPanel";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -53,6 +54,11 @@ export default function DashboardPage() {
   // Strategy slider (gain_aversion)
   const [sliderVal, setSliderVal] = useState(0);
   const analyzeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Rebalance band (drift tolerance %) - debounced re-analyze
+  const [bandPct, setBandPct] = useState(0);
+  const [pendingBand, setPendingBand] = useState(0);
+  const bandDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Inflation / real-vs-nominal toggle
   const [realDollars, setRealDollars] = useState(true);
@@ -88,10 +94,10 @@ export default function DashboardPage() {
   );
 
   const runAnalysis = useCallback(
-    (gainAversion: number) => {
+    (gainAversion: number, band: number) => {
       if (!loaded) return;
       setError(null);
-      analyzePortfolio(holdings, targets, gainAversion / 100)
+      analyzePortfolio(holdings, targets, gainAversion / 100, band)
         .then(setAnalysis)
         .catch((e) => setError(e?.response?.data?.detail ?? "Analysis failed."));
     },
@@ -100,14 +106,24 @@ export default function DashboardPage() {
 
   // Re-analyze on portfolio change.
   useEffect(() => {
-    runAnalysis(sliderVal);
+    runAnalysis(sliderVal, bandPct);
   }, [holdings, targets, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced strategy slider re-analyze.
   function handleSlider(v: number) {
     setSliderVal(v);
     if (analyzeDebounceRef.current) clearTimeout(analyzeDebounceRef.current);
-    analyzeDebounceRef.current = setTimeout(() => runAnalysis(v), 1000);
+    analyzeDebounceRef.current = setTimeout(() => runAnalysis(v, bandPct), 1000);
+  }
+
+  // Debounced rebalance-band re-analyze.
+  function handleBand(v: number) {
+    setPendingBand(v);
+    if (bandDebounceRef.current) clearTimeout(bandDebounceRef.current);
+    bandDebounceRef.current = setTimeout(() => {
+      setBandPct(v);
+      runAnalysis(sliderVal, v);
+    }, 1000);
   }
 
   // Horizon: update label immediately, debounce the actual projection by 1 s.
@@ -263,6 +279,7 @@ export default function DashboardPage() {
             taxable accounts. Adjust the slider to reduce this.
           </p>
         )}
+        <DriftBandControl value={pendingBand} onChange={handleBand} />
       </Card>
 
       {/* ---- allocation + projection ---- */}

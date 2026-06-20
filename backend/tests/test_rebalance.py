@@ -307,3 +307,44 @@ def test_tax_loss_harvest_sorted_biggest_loss_first():
     result = rebalance.analyze(holdings, {"US Stock": 50, "International": 50}, _tags())
     losses = [l["unrealized_loss"] for l in result["tax_loss_harvest"]]
     assert losses == [-4000, -1000]
+
+
+# ---------- rebalance bands ----------
+
+def test_band_leaves_small_drift_classes_untouched():
+    # 55/45 vs a 50/50 target -> 5pt drift each. A 6% band should leave both alone.
+    holdings = [
+        _holding("Brokerage", "taxable", "VTI", 5500),
+        _holding("Brokerage", "taxable", "BND", 4500),
+    ]
+    targets = {"US Stock": 50, "Taxable Bond": 50}
+    banded = rebalance.analyze(holdings, targets, _tags(), drift_band_pct=6.0)
+    assert banded["trades"] == [] or all(t["action"] == "HOLD" for t in banded["trades"])
+    us = next(b for b in banded["blended"] if b["asset_class"] == "US Stock")
+    assert us["within_band"] is True
+
+
+def test_band_still_trades_large_drift():
+    # 70/30 vs 50/50 -> 20pt drift; a 6% band must NOT suppress this.
+    holdings = [
+        _holding("Brokerage", "taxable", "VTI", 7000),
+        _holding("Brokerage", "taxable", "BND", 3000),
+    ]
+    targets = {"US Stock": 50, "Taxable Bond": 50}
+    banded = rebalance.analyze(holdings, targets, _tags(), drift_band_pct=6.0)
+    real_trades = [t for t in banded["trades"] if t["action"] in ("BUY", "SELL")]
+    assert len(real_trades) > 0
+    us = next(b for b in banded["blended"] if b["asset_class"] == "US Stock")
+    assert us["within_band"] is False
+
+
+def test_band_zero_matches_default():
+    holdings = [
+        _holding("Brokerage", "taxable", "VTI", 6000),
+        _holding("Brokerage", "taxable", "BND", 4000),
+    ]
+    targets = {"US Stock": 50, "Taxable Bond": 50}
+    default = rebalance.analyze(holdings, targets, _tags())
+    banded0 = rebalance.analyze(holdings, targets, _tags(), drift_band_pct=0.0)
+    assert len(default["trades"]) == len(banded0["trades"])
+    assert all(not b["within_band"] for b in banded0["blended"])

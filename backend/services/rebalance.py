@@ -83,6 +83,35 @@ def account_breakdown(holdings, tags):
     return list(accounts.values())
 
 
+def apply_bands(blended, total, targets, band_pct):
+    """Rebalance-band tolerance. A class whose current allocation is within +/- band of
+    its target is 'within band' - frozen at its current percentage so no trade is
+    generated. The remaining target budget is distributed across the out-of-band classes
+    in proportion to their original targets, so the effective targets still sum to ~100
+    and per-account cash-neutrality is preserved.
+
+    Returns (effective_targets, within_band_set). band_pct <= 0 is a no-op (returns the
+    original targets), so the default behavior is unchanged."""
+    if not band_pct or band_pct <= 0:
+        return dict(targets), set()
+    classes = set(blended) | set(targets)
+    cur_pct = {c: (blended.get(c, 0.0) / total * 100) if total else 0.0 for c in classes}
+    within, frozen, out = set(), {}, {}
+    for c in classes:
+        tgt = float(targets.get(c, 0.0))
+        if abs(cur_pct[c] - tgt) <= band_pct and (tgt > 0 or cur_pct[c] > 0):
+            frozen[c] = cur_pct[c]
+            within.add(c)
+        else:
+            out[c] = tgt
+    remaining = max(0.0, 100.0 - sum(frozen.values()))
+    out_sum = sum(out.values())
+    eff = dict(frozen)
+    for c, tgt in out.items():
+        eff[c] = (tgt / out_sum * remaining) if out_sum > 0 else 0.0
+    return eff, within
+
+
 def compute_deltas(blended, total, targets):
     """Dollar buy(+)/sell(-) per class to reach the target percentages."""
     deltas = {}
@@ -523,12 +552,14 @@ def _tax_loss_harvest(holdings, tags):
     return lots
 
 
-def analyze(holdings, targets, tags, gain_aversion: float = 0.0):
+def analyze(holdings, targets, tags, gain_aversion: float = 0.0, drift_band_pct: float = 0.0):
     """Top-level orchestration used by the /analyze router. `gain_aversion` (0..1)
-    slides between best-allocation (0) and zero-realized-gains (1) in taxable accounts."""
+    slides between best-allocation (0) and zero-realized-gains (1) in taxable accounts.
+    `drift_band_pct` leaves classes within +/- band of target untouched (no trade)."""
     blended, total = roll_up(holdings, tags)
-    deltas = compute_deltas(blended, total, targets)
-    trades, realized_gains = plan_trades(holdings, targets, tags, total, gain_aversion)
+    eff_targets, within_band = apply_bands(blended, total, targets, drift_band_pct)
+    deltas = compute_deltas(blended, total, eff_targets)
+    trades, realized_gains = plan_trades(holdings, eff_targets, tags, total, gain_aversion)
     grade = location_grade(holdings, tags)
 
     # Compute post-plan blended allocation (drift): apply the trades to the current values.
@@ -554,6 +585,7 @@ def analyze(holdings, targets, tags, gain_aversion: float = 0.0):
             "delta_value": round(deltas.get(cls, 0.0), 2),
             "post_pct": round(post_pct, 2),
             "drift_pct": round(post_pct - tgt, 2),
+            "within_band": cls in within_band,
         })
 
     unknown = sorted({h["ticker"] for h in holdings if h["ticker"] not in tags})

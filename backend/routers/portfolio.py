@@ -15,7 +15,8 @@ async def analyze(req: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
     tax-aware trade plan plus an asset-location grade."""
     tags = await load_tags(db)
     holdings = [h.model_dump() for h in req.holdings]
-    return rebalance.analyze(holdings, req.targets, tags, gain_aversion=req.gain_aversion)
+    return rebalance.analyze(holdings, req.targets, tags, gain_aversion=req.gain_aversion,
+                             drift_band_pct=req.drift_band_pct)
 
 
 @router.post("/project", response_model=ProjectResponse)

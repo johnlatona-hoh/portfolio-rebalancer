@@ -33,8 +33,8 @@ function Fail($msg) { Write-Host "FAIL $msg" -ForegroundColor Red; exit 1 }
 
 # --- A marker that proves the latest code is live (bump when you ship a schema change) ---
 # Verify checks that this property exists in the deployed OpenAPI schema.
-$BACKEND_MARKER_SCHEMA = "ProjectRequest"
-$BACKEND_MARKER_PROP   = "benchmark"
+$BACKEND_MARKER_SCHEMA = "AnalyzeRequest"
+$BACKEND_MARKER_PROP   = "drift_band_pct"
 
 function Get-LocalHeadShort { (git -C $root rev-parse --short HEAD).Trim() }
 

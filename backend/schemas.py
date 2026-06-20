@@ -24,6 +24,8 @@ class AnalyzeRequest(BaseModel):
     targets: dict[str, float]
     # 0..1 slider: 0 = best allocation (default), 1 = avoid all taxable realized gains.
     gain_aversion: float = 0.0
+    # rebalance band: classes within +/- this many pct points of target are left alone.
+    drift_band_pct: float = 0.0
 
 
 # ---------- Allocation + trades output ----------
@@ -37,6 +39,7 @@ class ClassAllocation(BaseModel):
     delta_value: float          # +buy / -sell to reach target (blended)
     post_pct: float = 0.0       # blended pct after applying the trade plan
     drift_pct: float = 0.0      # post_pct - target_pct (residual misalignment)
+    within_band: bool = False   # true when left untouched by the rebalance band
 
 
 class AccountAllocation(BaseModel):

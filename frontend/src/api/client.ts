@@ -32,6 +32,7 @@ export interface ClassAllocation {
   delta_value: number;
   post_pct: number;    // blended pct after applying the trade plan
   drift_pct: number;   // post_pct - target_pct (residual misalignment)
+  within_band?: boolean; // left untouched by the rebalance band
 }
 
 export interface AccountAllocation {
@@ -175,12 +176,14 @@ export interface BergerTip {
 export async function analyzePortfolio(
   holdings: Holding[],
   targets: Record<string, number>,
-  gainAversion = 0
+  gainAversion = 0,
+  driftBandPct = 0
 ): Promise<AnalyzeResponse> {
   const { data } = await api.post<AnalyzeResponse>("/portfolio/analyze", {
     holdings,
     targets,
     gain_aversion: gainAversion,
+    drift_band_pct: driftBandPct,
   });
   return data;
 }
