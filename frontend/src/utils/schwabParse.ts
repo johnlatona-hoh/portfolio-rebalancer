@@ -127,6 +127,268 @@ export function parseSchwabCsv(text: string, fileName: string): ParsedAccount | 
   };
 }
 
+// ---------------------------------------------------------------------------
+// Fidelity parser
+// ---------------------------------------------------------------------------
+
+/** True if the text looks like a Fidelity positions export. */
+export function isFidelityExport(text: string): boolean {
+  if (isSchwabExport(text)) return false;
+  const head = text.slice(0, 3000).toLowerCase();
+  return (
+    head.includes("cost basis total") ||
+    head.includes('"account number"') ||
+    head.includes(",account number,")
+  );
+}
+
+/** Parse a Fidelity positions CSV (handles single- and multi-account exports).
+ *  Returns null if the text is not a Fidelity export. */
+export function parseFidelityCsv(text: string, fileName: string): ParsedAccount[] | null {
+  if (!isFidelityExport(text)) return null;
+
+  const rawRows = (Papa.parse<string[]>(text, { skipEmptyLines: true }).data || []).filter(
+    (r) => Array.isArray(r) && r.length > 0
+  );
+
+  // Find the header row: first row that contains "Symbol" as a cell.
+  const headerIdx = rawRows.findIndex((r) =>
+    r.some((c) => (c ?? "").trim().toLowerCase() === "symbol")
+  );
+  if (headerIdx === -1) return null;
+
+  const header = rawRows[headerIdx].map((h) => (h ?? "").trim().toLowerCase());
+  const colIdx = (names: string[]) => {
+    for (const name of names) {
+      const i = header.findIndex((h) => h === name || h.startsWith(name));
+      if (i !== -1) return i;
+    }
+    return -1;
+  };
+
+  const symIdx = colIdx(["symbol"]);
+  const descIdx = colIdx(["description"]);
+  const qtyIdx = colIdx(["quantity", "shares"]);
+  const valIdx = colIdx(["current value"]);
+  const costIdx = colIdx(["cost basis total", "cost basis"]);
+  const typeIdx = colIdx(["type"]);
+  const acctNameIdx = colIdx(["account name"]);
+
+  if (symIdx === -1 || valIdx === -1) return null;
+
+  // Default account name: try rows before header for a non-header label.
+  let defaultName = fileName.replace(/\.csv$/i, "");
+  for (const r of rawRows.slice(0, headerIdx)) {
+    const cell = (r[0] ?? "").trim();
+    if (cell && !/^(account number|date downloaded)/i.test(cell)) {
+      defaultName = cell;
+      break;
+    }
+  }
+
+  const accountMap = new Map<string, ParsedAccount>();
+  const getAccount = (name: string): ParsedAccount => {
+    if (!accountMap.has(name)) {
+      accountMap.set(name, {
+        fileName,
+        accountName: name,
+        accountType: inferAccountType(name),
+        holdings: [],
+        cashValue: 0,
+        positionCount: 0,
+        meta: {},
+      });
+    }
+    return accountMap.get(name)!;
+  };
+
+  for (const r of rawRows.slice(headerIdx + 1)) {
+    const sym = (r[symIdx] ?? "").trim();
+    const acctName = acctNameIdx !== -1 ? (r[acctNameIdx] ?? "").trim() || defaultName : defaultName;
+
+    // Pending activity / subtotal rows have "--" or empty symbol.
+    if (!sym || sym === "--") {
+      const val = cleanNumber(r[valIdx]);
+      if (val > 0) getAccount(acctName).cashValue += val;
+      continue;
+    }
+    // Stop at Fidelity footer totals ("Total Account Value", etc.).
+    if (/^total/i.test(sym)) break;
+
+    const current_value = cleanNumber(r[valIdx]);
+    if (current_value === 0) continue;
+
+    const ticker = sym.toUpperCase();
+    const acct = getAccount(acctName);
+    acct.meta[ticker] = {
+      description: descIdx !== -1 ? (r[descIdx] ?? "").trim() : "",
+      assetType: typeIdx !== -1 ? (r[typeIdx] ?? "").trim() : "",
+    };
+    acct.holdings.push({
+      account_name: acctName,
+      account_type: "taxable",
+      ticker,
+      quantity: qtyIdx !== -1 ? cleanNumber(r[qtyIdx]) : 0,
+      cost_basis: costIdx !== -1 ? cleanNumber(r[costIdx]) : 0,
+      current_value,
+    });
+    acct.positionCount += 1;
+  }
+
+  for (const acct of accountMap.values()) {
+    if (acct.cashValue > 0) {
+      acct.holdings.push({
+        account_name: acct.accountName,
+        account_type: "taxable",
+        ticker: "CASH",
+        quantity: acct.cashValue,
+        cost_basis: acct.cashValue,
+        current_value: acct.cashValue,
+      });
+    }
+  }
+
+  return accountMap.size > 0 ? [...accountMap.values()] : null;
+}
+
+// ---------------------------------------------------------------------------
+// Vanguard parser
+// ---------------------------------------------------------------------------
+
+/** True if the text looks like a Vanguard positions export.
+ *  Vanguard exports do not include cost basis. */
+export function isVanguardExport(text: string): boolean {
+  if (isSchwabExport(text)) return false;
+  const head = text.slice(0, 3000).toLowerCase();
+  return (
+    head.includes("fund account number") ||
+    head.includes("vanguard brokerage account") ||
+    (head.includes("fund name") && head.includes("share price")) ||
+    (head.includes('"ticker"') && head.includes("total value") && !head.includes("cost basis"))
+  );
+}
+
+/** Parse a Vanguard positions CSV. Returns null if not a Vanguard export.
+ *  Cost basis is always 0 — Vanguard does not include it in position exports. */
+export function parseVanguardCsv(text: string, fileName: string): ParsedAccount[] | null {
+  if (!isVanguardExport(text)) return null;
+
+  const rawRows = (Papa.parse<string[]>(text, { skipEmptyLines: true }).data || []).filter(
+    (r) => Array.isArray(r) && r.length > 0
+  );
+
+  const accounts: ParsedAccount[] = [];
+  let i = 0;
+
+  while (i < rawRows.length) {
+    // Find the next data section's header row (contains "Ticker" or "Symbol" or "Fund Name").
+    const relHeaderIdx = rawRows.slice(i).findIndex((r) =>
+      r.some((c) => {
+        const t = (c ?? "").trim().toLowerCase();
+        return t === "ticker" || t === "symbol" || t === "fund name";
+      })
+    );
+    if (relHeaderIdx === -1) break;
+
+    const absHeaderIdx = i + relHeaderIdx;
+
+    // Account name: look in the rows immediately before the header for an account label.
+    let accountName = fileName.replace(/\.csv$/i, "");
+    for (let j = absHeaderIdx - 1; j >= Math.max(0, absHeaderIdx - 6); j--) {
+      const cell = (rawRows[j][0] ?? "").trim();
+      const cell1 = (rawRows[j][1] ?? "").trim();
+      if (/fund account number/i.test(cell) && cell1) {
+        accountName = cell1;
+        break;
+      }
+      if (cell && !/^(account number|date|as of)/i.test(cell)) {
+        accountName = cell;
+        break;
+      }
+    }
+
+    const header = rawRows[absHeaderIdx].map((h) => (h ?? "").trim().toLowerCase());
+    const colIdx = (names: string[]): number => {
+      for (const name of names) {
+        const idx = header.indexOf(name);
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    const symIdx = colIdx(["ticker", "symbol"]);
+    const descIdx = colIdx(["fund name", "name", "investment name"]);
+    const qtyIdx = colIdx(["shares", "quantity", "share quantity"]);
+    const valIdx = colIdx(["total value", "current value", "account value", "value"]);
+
+    if (valIdx === -1) { i = absHeaderIdx + 1; continue; }
+
+    const acct: ParsedAccount = {
+      fileName,
+      accountName,
+      accountType: inferAccountType(accountName),
+      holdings: [],
+      cashValue: 0,
+      positionCount: 0,
+      meta: {},
+    };
+
+    i = absHeaderIdx + 1;
+    while (i < rawRows.length) {
+      const r = rawRows[i];
+      const firstCell = (r[0] ?? "").trim();
+
+      // Blank row or new account section marker — end of this section.
+      if (!firstCell) { i++; break; }
+      if (/fund account number|account number/i.test(firstCell)) break;
+
+      const sym = symIdx !== -1 ? (r[symIdx] ?? "").trim() : "";
+      const desc = descIdx !== -1 ? (r[descIdx] ?? "").trim() : "";
+      const current_value = cleanNumber(r[valIdx]);
+
+      if (!sym || sym === "--") {
+        if (current_value > 0) acct.cashValue += current_value;
+        i++;
+        continue;
+      }
+      if (/^(total|subtotal)/i.test(sym) || /^(total|subtotal)/i.test(desc)) { i++; break; }
+      if (current_value === 0) { i++; continue; }
+
+      const ticker = sym.toUpperCase();
+      acct.meta[ticker] = { description: desc, assetType: "" };
+      acct.holdings.push({
+        account_name: accountName,
+        account_type: "taxable",
+        ticker,
+        quantity: qtyIdx !== -1 ? cleanNumber(r[qtyIdx]) : 0,
+        cost_basis: 0, // Vanguard does not export cost basis
+        current_value,
+      });
+      acct.positionCount += 1;
+      i++;
+    }
+
+    if (acct.cashValue > 0) {
+      acct.holdings.push({
+        account_name: accountName,
+        account_type: "taxable",
+        ticker: "CASH",
+        quantity: acct.cashValue,
+        cost_basis: acct.cashValue,
+        current_value: acct.cashValue,
+      });
+    }
+
+    if (acct.holdings.length > 0) accounts.push(acct);
+  }
+
+  return accounts.length > 0 ? accounts : null;
+}
+
+// ---------------------------------------------------------------------------
+// Template CSV parser (fallback)
+// ---------------------------------------------------------------------------
+
 const ACCOUNT_TYPES_SET = new Set(["taxable", "tax_deferred", "tax_free"]);
 
 /** Fallback parser for the simple canonical CSV template (account_name, account_type, ticker,

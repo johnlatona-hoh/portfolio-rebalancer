@@ -7,6 +7,8 @@ import { fmtMoney } from "../utils/money";
 import { downloadText } from "../utils/download";
 import {
   parseSchwabCsv,
+  parseFidelityCsv,
+  parseVanguardCsv,
   parseTemplateCsv,
   holdingsForAccount,
   inferAccountType,
@@ -98,11 +100,21 @@ export default function SetupPage() {
         if (schwab) {
           newAccounts.push(schwab);
         } else {
-          const tmpl = parseTemplateCsv(text, file.name);
-          if (tmpl.length === 0) {
-            errors.push(`${file.name}: no recognizable holdings (not a Schwab export or template).`);
+          const fidelity = parseFidelityCsv(text, file.name);
+          if (fidelity) {
+            newAccounts.push(...fidelity);
           } else {
-            newAccounts.push(...tmpl);
+            const vanguard = parseVanguardCsv(text, file.name);
+            if (vanguard) {
+              newAccounts.push(...vanguard);
+            } else {
+              const tmpl = parseTemplateCsv(text, file.name);
+              if (tmpl.length === 0) {
+                errors.push(`${file.name}: no recognizable holdings (not a Schwab, Fidelity, Vanguard, or template export).`);
+              } else {
+                newAccounts.push(...tmpl);
+              }
+            }
           }
         }
       } catch (e: any) {
@@ -153,10 +165,10 @@ export default function SetupPage() {
           )}
         </div>
         <p className="text-sm text-muted mb-3">
-          Upload your <strong>Schwab position exports</strong> (one CSV per account) — the format
-          is detected automatically and any ticker is classified from its description. Select
-          several at once. Data stays in your browser; nothing is saved unless you create a
-          snapshot. (A simple CSV template is also supported.)
+          Upload your <strong>Schwab, Fidelity, or Vanguard position exports</strong> (one CSV per
+          account) — the broker is detected automatically and tickers are classified from their
+          descriptions. Select several at once. Data stays in your browser; nothing is saved unless
+          you create a snapshot. (A simple CSV template is also supported.)
         </p>
         <div className="flex gap-3 items-center flex-wrap">
           <label className="text-sm px-3 py-2 rounded bg-accent hover:bg-accent-hover cursor-pointer">
