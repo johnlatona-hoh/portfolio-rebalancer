@@ -18,6 +18,17 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class PriceCache(Base):
+    """Last-known price per ticker, refreshed at most once per 24h. Lets users refresh
+    stale CSV values without re-uploading. New table - created by create_tables()."""
+
+    __tablename__ = "rebalancer_price_cache"
+
+    ticker: Mapped[str] = mapped_column(String, primary_key=True)
+    price: Mapped[float] = mapped_column(Float)
+    as_of: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AICache(Base):
     """Caches Gemini advisor output keyed by a hash of (kind + portfolio summary), so an
     unchanged portfolio viewed repeatedly does not re-query the API. TTL enforced in the

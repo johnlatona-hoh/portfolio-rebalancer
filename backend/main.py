@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from config import settings
 from database import create_tables, engine
-from routers import portfolio, tags, snapshots, users, advisor
+from routers import portfolio, tags, snapshots, users, advisor, prices
 
 
 async def run_migrations():
@@ -43,6 +43,7 @@ app.include_router(tags.router)
 app.include_router(snapshots.router)
 app.include_router(users.router)
 app.include_router(advisor.router)
+app.include_router(prices.router)
 
 
 @app.get("/")

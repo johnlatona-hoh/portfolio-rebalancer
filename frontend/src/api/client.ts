@@ -188,6 +188,19 @@ export async function projectPortfolio(
   return data;
 }
 
+export interface PriceQuote {
+  price: number;
+  as_of: string; // ISO8601
+}
+
+export async function getPrices(tickers: string[]): Promise<Record<string, PriceQuote>> {
+  if (tickers.length === 0) return {};
+  const { data } = await api.get<{ prices: Record<string, PriceQuote> }>("/prices", {
+    params: { tickers: tickers.join(",") },
+  });
+  return data.prices;
+}
+
 export async function listTags(): Promise<TickerTag[]> {
   const { data } = await api.get<TickerTag[]>("/tags");
   return data;

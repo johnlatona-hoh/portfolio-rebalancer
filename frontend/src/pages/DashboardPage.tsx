@@ -5,6 +5,7 @@ import {
   projectPortfolio,
   listTags,
   getInsights,
+  getPrices,
   type AnalyzeResponse,
   type ProjectResponse,
   type TickerTag,
@@ -32,7 +33,11 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 }
 
 export default function DashboardPage() {
-  const { holdings, targets, loaded } = usePortfolio();
+  const { holdings, targets, loaded, loadPortfolio } = usePortfolio();
+
+  // Live price refresh
+  const [pricing, setPricing] = useState(false);
+  const [priceMsg, setPriceMsg] = useState<string | null>(null);
 
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [projection, setProjection] = useState<ProjectResponse | null>(null);
@@ -134,6 +139,36 @@ export default function DashboardPage() {
     return realDollars ? deflatePoints(projection.points, inflationPct) : projection.points;
   }, [projection, realDollars, inflationPct]);
 
+  async function refreshPrices() {
+    if (!loaded) return;
+    setPricing(true);
+    setPriceMsg(null);
+    try {
+      const tickers = [...new Set(holdings.map((h) => h.ticker).filter(Boolean))];
+      const quotes = await getPrices(tickers);
+      const n = Object.keys(quotes).length;
+      if (n === 0) {
+        setPriceMsg("No prices available right now (source may be unavailable).");
+        return;
+      }
+      const updated = holdings.map((h) => {
+        const q = quotes[h.ticker.toUpperCase()];
+        return q ? { ...h, current_value: Math.round(q.price * h.quantity * 100) / 100 } : h;
+      });
+      loadPortfolio(updated, targets);
+      const missing = tickers.length - n;
+      setPriceMsg(
+        `Updated ${n} of ${tickers.length} holdings` +
+          (missing > 0 ? ` (${missing} kept their uploaded value)` : "") +
+          ` - as of ${new Date().toLocaleDateString()}.`
+      );
+    } catch {
+      setPriceMsg("Could not refresh prices. Try again later.");
+    } finally {
+      setPricing(false);
+    }
+  }
+
   async function loadInsights() {
     if (!analysis) return;
     setLoadingInsights(true);
@@ -171,8 +206,21 @@ export default function DashboardPage() {
       {/* ---- summary strip ---- */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
-          <div className="text-xs uppercase text-muted">Total Portfolio</div>
-          <div className="text-2xl font-semibold mt-1">{fmtMoney(analysis.total_value)}</div>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="text-xs uppercase text-muted">Total Portfolio</div>
+              <div className="text-2xl font-semibold mt-1">{fmtMoney(analysis.total_value)}</div>
+            </div>
+            <button
+              onClick={refreshPrices}
+              disabled={pricing}
+              className="text-xs px-2 py-1 rounded border border-border hover:bg-surface disabled:opacity-50 whitespace-nowrap"
+              title="Fetch the latest market prices and recompute each holding's value (quantity x price). Cached for 24h."
+            >
+              {pricing ? "Refreshing…" : "↻ Refresh prices"}
+            </button>
+          </div>
+          {priceMsg && <div className="text-xs text-muted mt-2">{priceMsg}</div>}
         </Card>
         <Card>
           <div className="text-xs uppercase text-muted">Accounts</div>
