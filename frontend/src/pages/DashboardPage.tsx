@@ -18,6 +18,7 @@ import { fmtMoney } from "../utils/money";
 import { deflatePoints } from "../utils/inflation";
 import AllocationBars from "../components/AllocationBars";
 import TradeTable from "../components/TradeTable";
+import SaveRebalanceButton from "../components/SaveRebalanceButton";
 import ProjectionChart from "../components/ProjectionChart";
 import ReturnAssumptions from "../components/ReturnAssumptions";
 import HorizonControl from "../components/HorizonControl";
@@ -474,7 +475,10 @@ export default function DashboardPage() {
 
       {/* ---- trades ---- */}
       <Card>
-        <h3 className="font-semibold mb-3">Proposed Rebalancing Trades (tax-aware)</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold">Proposed Rebalancing Trades (tax-aware)</h3>
+          <SaveRebalanceButton analysis={analysis} />
+        </div>
         <TradeTable trades={analysis.trades} />
         {analysis.grade.reasons.length > 0 && (
           <ul className="mt-4 text-xs list-disc pl-5 space-y-1" style={{ color: "#d8a657" }}>

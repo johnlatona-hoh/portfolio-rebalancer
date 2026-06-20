@@ -251,6 +251,34 @@ class SnapshotDeleteRequest(BaseModel):
     pin: str
 
 
+# ---------- Rebalance history ----------
+
+class SaveRebalanceRequest(BaseModel):
+    user_id: str
+    label: str | None = None
+    total_value: float
+    max_drift_pct: float = 0.0
+    allocation_json: dict[str, float]   # {class: blended_pct}
+    targets_json: dict[str, float]      # {class: target_pct}
+    grade_score: int | None = None
+    trade_count: int = 0
+    realized_gains_total: float = 0.0
+
+
+class RebalanceEventOut(BaseModel):
+    id: str
+    user_id: str
+    created_at: datetime
+    label: str | None
+    total_value: float
+    max_drift_pct: float
+    allocation_json: dict[str, float]
+    targets_json: dict[str, float]
+    grade_score: int | None
+    trade_count: int
+    realized_gains_total: float
+
+
 # ---------- Advisor ----------
 
 class AdvisorRequest(BaseModel):

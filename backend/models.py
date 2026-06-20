@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Text, Index, Float
+from sqlalchemy import String, DateTime, Text, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -57,6 +57,25 @@ class TickerTag(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+
+class RebalanceEvent(Base):
+    """A saved rebalance snapshot — recorded explicitly by the user (not auto-generated).
+    Captures the portfolio state + grade at the time of saving for drift tracking."""
+
+    __tablename__ = "rebalancer_rebalance_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)         # uuid4 hex
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
+    total_value: Mapped[float] = mapped_column(Float)
+    max_drift_pct: Mapped[float] = mapped_column(Float, default=0.0)   # largest |drift| pct-point
+    allocation_json: Mapped[str] = mapped_column(Text)                  # JSON {class: pct}
+    targets_json: Mapped[str] = mapped_column(Text)                     # JSON {class: target_pct}
+    grade_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    trade_count: Mapped[int] = mapped_column(Integer, default=0)
+    realized_gains_total: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class Snapshot(Base):

@@ -1,14 +1,16 @@
 import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
 import { PortfolioProvider, usePortfolio } from "./state/portfolio";
-import { AuthProvider } from "./state/auth";
+import { AuthProvider, useAuth } from "./state/auth";
 import SetupPage from "./pages/SetupPage";
 import DashboardPage from "./pages/DashboardPage";
 import SnapshotPage from "./pages/SnapshotPage";
+import HistoryPage from "./pages/HistoryPage";
 import WarmupBanner from "./components/WarmupBanner";
 
 function Navbar() {
   const nav = useNavigate();
   const { loaded, reset } = usePortfolio();
+  const { isLoggedIn } = useAuth();
   const link = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-1.5 rounded-md text-sm ${
       isActive ? "bg-accent text-white" : "text-muted hover:text-gray-100"
@@ -32,6 +34,11 @@ function Navbar() {
         <NavLink to="/snapshots" className={link}>
           My Portfolios
         </NavLink>
+        {isLoggedIn && (
+          <NavLink to="/history" className={link}>
+            History
+          </NavLink>
+        )}
         {loaded && (
           <button
             onClick={startOver}
@@ -57,6 +64,7 @@ export default function App() {
               <Route path="/" element={<SetupPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/snapshots" element={<SnapshotPage />} />
+              <Route path="/history" element={<HistoryPage />} />
             </Routes>
           </main>
         </div>

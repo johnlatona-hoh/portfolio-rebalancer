@@ -171,6 +171,32 @@ export interface BergerTip {
   disadvantage: string;
 }
 
+export interface RebalanceEvent {
+  id: string;
+  user_id: string;
+  created_at: string;
+  label: string | null;
+  total_value: number;
+  max_drift_pct: number;
+  allocation_json: Record<string, number>;
+  targets_json: Record<string, number>;
+  grade_score: number | null;
+  trade_count: number;
+  realized_gains_total: number;
+}
+
+export interface SaveRebalanceRequest {
+  user_id: string;
+  label?: string;
+  total_value: number;
+  max_drift_pct: number;
+  allocation_json: Record<string, number>;
+  targets_json: Record<string, number>;
+  grade_score?: number;
+  trade_count: number;
+  realized_gains_total: number;
+}
+
 // ---------- Calls ----------
 
 export async function analyzePortfolio(
@@ -297,4 +323,20 @@ export async function getInsights(summary: unknown): Promise<string[]> {
 export async function getBergerTips(summary: unknown): Promise<BergerTip[]> {
   const { data } = await api.post<{ tips: BergerTip[] }>("/advisor/tips", { summary });
   return data.tips;
+}
+
+// ---------- Rebalance history ----------
+
+export async function saveRebalanceEvent(req: SaveRebalanceRequest): Promise<RebalanceEvent> {
+  const { data } = await api.post<RebalanceEvent>("/history", req);
+  return data;
+}
+
+export async function listRebalanceEvents(user_id: string): Promise<RebalanceEvent[]> {
+  const { data } = await api.get<RebalanceEvent[]>("/history", { params: { user_id } });
+  return data;
+}
+
+export async function deleteRebalanceEvent(event_id: string, user_id: string): Promise<void> {
+  await api.delete(`/history/${event_id}`, { params: { user_id } });
 }
