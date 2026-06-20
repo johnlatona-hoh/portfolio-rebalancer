@@ -48,7 +48,7 @@ function Test-BackendLive {
 
 function Get-FrontendBundle {
     try {
-        $html = curl.exe -s $FRONTEND_URL
+        $html = (Invoke-WebRequest -Uri $FRONTEND_URL -UseBasicParsing -TimeoutSec 15).Content
         if ($html -match 'assets/(index-[A-Za-z0-9_-]+\.js)') { return $Matches[1] }
         return $null
     } catch { return $null }
