@@ -83,33 +83,20 @@ def account_breakdown(holdings, tags):
     return list(accounts.values())
 
 
-def apply_bands(blended, total, targets, band_pct):
-    """Rebalance-band tolerance. A class whose current allocation is within +/- band of
-    its target is 'within band' - frozen at its current percentage so no trade is
-    generated. The remaining target budget is distributed across the out-of-band classes
-    in proportion to their original targets, so the effective targets still sum to ~100
-    and per-account cash-neutrality is preserved.
-
-    Returns (effective_targets, within_band_set). band_pct <= 0 is a no-op (returns the
-    original targets), so the default behavior is unchanged."""
+def within_band_classes(blended, total, targets, band_pct):
+    """Rebalance-band tolerance: the set of classes whose current blended allocation is
+    within +/- band_pct of its target. These are left untouched by the trade plan (frozen
+    at their current per-account holdings). band_pct <= 0 returns an empty set, so the
+    default behavior is unchanged."""
     if not band_pct or band_pct <= 0:
-        return dict(targets), set()
-    classes = set(blended) | set(targets)
-    cur_pct = {c: (blended.get(c, 0.0) / total * 100) if total else 0.0 for c in classes}
-    within, frozen, out = set(), {}, {}
-    for c in classes:
+        return set()
+    out = set()
+    for c in set(blended) | set(targets):
+        cur_pct = (blended.get(c, 0.0) / total * 100) if total else 0.0
         tgt = float(targets.get(c, 0.0))
-        if abs(cur_pct[c] - tgt) <= band_pct and (tgt > 0 or cur_pct[c] > 0):
-            frozen[c] = cur_pct[c]
-            within.add(c)
-        else:
-            out[c] = tgt
-    remaining = max(0.0, 100.0 - sum(frozen.values()))
-    out_sum = sum(out.values())
-    eff = dict(frozen)
-    for c, tgt in out.items():
-        eff[c] = (tgt / out_sum * remaining) if out_sum > 0 else 0.0
-    return eff, within
+        if abs(cur_pct - tgt) <= band_pct and (tgt > 0 or cur_pct > 0):
+            out.add(c)
+    return out
 
 
 def compute_deltas(blended, total, targets):
@@ -151,7 +138,7 @@ def _est_gain(amount: float, h: dict) -> float:
     return round(amount * gain_ratio, 2)
 
 
-def target_composition(holdings, targets, tags, total):
+def target_composition(holdings, targets, tags, total, frozen=None):
     """Decide what each account should hold, by asset class, keeping each account's
     total value fixed (no inter-account transfers) and honoring asset-location
     preferences. Returns {account_name: {asset_class: dollars}}.
@@ -159,7 +146,12 @@ def target_composition(holdings, targets, tags, total):
     Tax-advantaged accounts get first claim on their preferred classes, so scarce
     tax-inefficient assets land in tax-deferred and growth equity in Roth before the
     taxable account fills with whatever remains.
+
+    `frozen` is a set of rebalance-band classes that must not be traded: each is pinned
+    to its CURRENT holding within each account (no relocation, no buy/sell) and excluded
+    from the target fill. With frozen empty (the default), behavior is unchanged.
     """
+    frozen = frozen or set()
     remaining = {c: total * (targets.get(c, 0.0) / 100.0) for c in ASSET_CLASSES}
     accounts = account_breakdown(holdings, tags)
     ordered = sorted(accounts, key=lambda a: _ACCOUNT_FILL_ORDER.get(a["account_type"], 3))
@@ -167,9 +159,18 @@ def target_composition(holdings, targets, tags, total):
     comp: dict[str, dict] = {a["account_name"]: {} for a in accounts}
     for a in ordered:
         cap = a["value"]
+        # Pin frozen (within-band) classes to their current holding in this account so the
+        # plan never trades or relocates them; reduce this account's fillable capacity.
+        for cls in frozen:
+            cur = a["by_class"].get(cls, 0.0)
+            if cur > 0.005:
+                comp[a["account_name"]][cls] = cur
+                cap -= cur
         pref = PLACEMENT.get(a["account_type"], ASSET_CLASSES)
         # primary pass: preferred classes; fallback pass: anything still owed
         for cls in pref + [c for c in ASSET_CLASSES if c not in pref]:
+            if cls in frozen:
+                continue
             if cap <= 0.005:
                 break
             take = min(cap, remaining.get(cls, 0.0))
@@ -270,7 +271,7 @@ def _plan_account(holdings, name, atype, current, target, tags, gain_budget=None
     return trades, round(realized, 2)
 
 
-def plan_trades(holdings, targets, tags, total, gain_aversion: float = 0.0):
+def plan_trades(holdings, targets, tags, total, gain_aversion: float = 0.0, frozen=None):
     """Produce an execution-ready, tax-aware BUY/SELL list. Each account is rebalanced
     in place toward its target composition, so an account's buys are funded by its own
     sells (cash-neutral per account; never over-allocated).
@@ -278,9 +279,11 @@ def plan_trades(holdings, targets, tags, total, gain_aversion: float = 0.0):
     `gain_aversion` (0..1): 0 ignores realized gains (best-allocation plan); 1 forbids
     realizing any gains in taxable accounts. Intermediate values cap realized gains at
     `(1 - g) * G_full` where G_full is the unconstrained gains figure.
+
+    `frozen` is the rebalance-band class set, pinned to current holdings (never traded).
     """
     g = max(0.0, min(1.0, float(gain_aversion or 0.0)))
-    comp = target_composition(holdings, targets, tags, total)
+    comp = target_composition(holdings, targets, tags, total, frozen=frozen)
     accounts = account_breakdown(holdings, tags)
 
     # Pre-pass at g=0 to size the gain budget for the constrained pass.
@@ -557,9 +560,9 @@ def analyze(holdings, targets, tags, gain_aversion: float = 0.0, drift_band_pct:
     slides between best-allocation (0) and zero-realized-gains (1) in taxable accounts.
     `drift_band_pct` leaves classes within +/- band of target untouched (no trade)."""
     blended, total = roll_up(holdings, tags)
-    eff_targets, within_band = apply_bands(blended, total, targets, drift_band_pct)
-    deltas = compute_deltas(blended, total, eff_targets)
-    trades, realized_gains = plan_trades(holdings, eff_targets, tags, total, gain_aversion)
+    within_band = within_band_classes(blended, total, targets, drift_band_pct)
+    trades, realized_gains = plan_trades(holdings, targets, tags, total, gain_aversion,
+                                         frozen=within_band)
     grade = location_grade(holdings, tags)
 
     # Compute post-plan blended allocation (drift): apply the trades to the current values.
@@ -582,14 +585,18 @@ def analyze(holdings, targets, tags, gain_aversion: float = 0.0, drift_band_pct:
             "value": round(val, 2),
             "pct": round((val / total * 100) if total else 0.0, 2),
             "target_pct": tgt,
-            "delta_value": round(deltas.get(cls, 0.0), 2),
+            # actual net change the plan makes (post - current); ~0 for frozen classes
+            "delta_value": round(post.get(cls, 0.0) - val, 2),
             "post_pct": round(post_pct, 2),
             "drift_pct": round(post_pct - tgt, 2),
             "within_band": cls in within_band,
         })
 
     unknown = sorted({h["ticker"] for h in holdings if h["ticker"] not in tags})
-    max_drift = max((abs(b["drift_pct"]) for b in blended_view), default=0.0)
+    # Largest residual drift the plan is actually trying to close - exclude band-frozen
+    # classes, whose drift is an intentional, accepted tolerance (not a planning failure).
+    max_drift = max((abs(b["drift_pct"]) for b in blended_view if not b["within_band"]),
+                    default=0.0)
 
     by_account_data = account_breakdown(holdings, tags)
     return {

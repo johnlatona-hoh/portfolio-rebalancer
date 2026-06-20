@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type Benchmark = Record<string, number> | null;
 
@@ -15,36 +15,50 @@ interface Props {
 }
 
 /** Lets the user pick a benchmark to overlay on the projection: a preset, none, or a
- * custom stock/bond split (stock is split 60/40 US/International; bond -> Taxable Bond). */
-export default function BenchmarkControl({ value, onChange }: Props) {
+ * custom stock/bond split (stock is split 60/40 US/International; bond -> Taxable Bond).
+ * Custom edits are debounced so each keystroke doesn't fire a backend projection. */
+export default function BenchmarkControl({ onChange }: Props) {
   const [mode, setMode] = useState<string>("None");
   const [stock, setStock] = useState(70);
   const [bond, setBond] = useState(30);
 
-  function applyCustom(s: number, b: number) {
-    const total = s + b || 1;
-    const sn = (s / total) * 100;
-    const bn = (b / total) * 100;
-    onChange({
-      "US Stock": sn * 0.6,
-      International: sn * 0.4,
-      "Taxable Bond": bn,
-    });
-  }
+  // Keep the latest onChange without making it a dependency of the debounce effect.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
-  function handleMode(m: string) {
-    setMode(m);
-    if (m === "None") onChange(null);
-    else if (m === "Custom") applyCustom(stock, bond);
-    else onChange(BENCHMARK_PRESETS[m]);
-  }
+  useEffect(() => {
+    if (mode === "None") {
+      onChangeRef.current(null);
+      return;
+    }
+    if (mode !== "Custom") {
+      onChangeRef.current(BENCHMARK_PRESETS[mode]);
+      return;
+    }
+    // Custom: debounce, and treat an empty/zero split as "no benchmark".
+    const id = setTimeout(() => {
+      const total = stock + bond;
+      if (total <= 0) {
+        onChangeRef.current(null);
+        return;
+      }
+      const sn = (stock / total) * 100;
+      const bn = (bond / total) * 100;
+      onChangeRef.current({
+        "US Stock": sn * 0.6,
+        International: sn * 0.4,
+        "Taxable Bond": bn,
+      });
+    }, 500);
+    return () => clearTimeout(id);
+  }, [mode, stock, bond]);
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
       <span>Benchmark</span>
       <select
         value={mode}
-        onChange={(e) => handleMode(e.target.value)}
+        onChange={(e) => setMode(e.target.value)}
         className="bg-surface border border-border rounded px-2 py-1 text-fg"
       >
         <option value="None">None</option>
@@ -56,16 +70,15 @@ export default function BenchmarkControl({ value, onChange }: Props) {
         <option value="Custom">Custom</option>
       </select>
       {mode === "Custom" && (
-        <span className="flex items-center gap-1" title="Stock is split 60/40 US/International; bond maps to Taxable Bond.">
+        <span
+          className="flex items-center gap-1"
+          title="Stock is split 60/40 US/International; bond maps to Taxable Bond."
+        >
           <input
             type="number"
             min={0}
             value={stock}
-            onChange={(e) => {
-              const s = Number(e.target.value) || 0;
-              setStock(s);
-              applyCustom(s, bond);
-            }}
+            onChange={(e) => setStock(Math.max(0, Number(e.target.value) || 0))}
             className="w-14 bg-surface border border-border rounded px-2 py-1 text-fg"
           />
           <span>% stock /</span>
@@ -73,11 +86,7 @@ export default function BenchmarkControl({ value, onChange }: Props) {
             type="number"
             min={0}
             value={bond}
-            onChange={(e) => {
-              const b = Number(e.target.value) || 0;
-              setBond(b);
-              applyCustom(stock, b);
-            }}
+            onChange={(e) => setBond(Math.max(0, Number(e.target.value) || 0))}
             className="w-14 bg-surface border border-border rounded px-2 py-1 text-fg"
           />
           <span>% bond</span>

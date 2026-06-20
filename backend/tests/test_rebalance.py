@@ -348,3 +348,37 @@ def test_band_zero_matches_default():
     banded0 = rebalance.analyze(holdings, targets, _tags(), drift_band_pct=0.0)
     assert len(default["trades"]) == len(banded0["trades"])
     assert all(not b["within_band"] for b in banded0["blended"])
+
+
+def test_band_freezes_within_band_class_across_accounts_no_relocation():
+    # Bond sits in taxable and US in tax-deferred (mislocated). Blended is 50/50 == target,
+    # so both classes are within a 6% band. Without a band the engine relocates them
+    # (asset-location swap); with the band, frozen classes must NOT be traded at all.
+    holdings = [
+        _holding("Brokerage", "taxable", "BND", 5000),       # bond mislocated in taxable
+        _holding("401k", "tax_deferred", "VTI", 5000),       # us in tax-deferred
+    ]
+    targets = {"US Stock": 50, "Taxable Bond": 50}
+
+    no_band = rebalance.analyze(holdings, targets, _tags(), drift_band_pct=0.0)
+    assert len([t for t in no_band["trades"] if t["action"] in ("BUY", "SELL")]) > 0
+
+    banded = rebalance.analyze(holdings, targets, _tags(), drift_band_pct=6.0)
+    real = [t for t in banded["trades"] if t["action"] in ("BUY", "SELL")]
+    assert real == []  # frozen per-account: no relocation trades despite mislocation
+    for b in banded["blended"]:
+        if b["asset_class"] in ("US Stock", "Taxable Bond"):
+            assert b["within_band"] is True
+            assert abs(b["delta_value"]) < 1
+
+
+def test_band_excludes_intentional_drift_from_max_drift():
+    # 55/45 vs 50/50 with a 6% band: both frozen, so max_drift_pct should report ~0,
+    # not the 5pt intentional band tolerance.
+    holdings = [
+        _holding("B", "taxable", "VTI", 5500),
+        _holding("B", "taxable", "BND", 4500),
+    ]
+    targets = {"US Stock": 50, "Taxable Bond": 50}
+    banded = rebalance.analyze(holdings, targets, _tags(), drift_band_pct=6.0)
+    assert banded["max_drift_pct"] < 1.0

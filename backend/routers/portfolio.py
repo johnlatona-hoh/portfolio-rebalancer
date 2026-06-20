@@ -42,9 +42,13 @@ async def project(req: ProjectRequest):
         bench = projections.project(
             bench_value_by_class,
             horizon_months=req.horizon_months,
-            n_paths=req.n_paths,
+            # only the benchmark median line is drawn, so fewer paths is plenty
+            n_paths=min(req.n_paths, 400),
             assumptions=req.assumptions,
-            fee_drag=req.fee_drag,
+            # Benchmarks represent low-cost index funds: do NOT subtract the portfolio's
+            # own expense ratio from the benchmark, or a fee'd portfolio would unfairly
+            # drag the index line down too (breaks the apples-to-apples comparison).
+            fee_drag=0.0,
             monthly_contribution=req.monthly_contribution,
         )
         result["benchmark_points"] = bench["points"]

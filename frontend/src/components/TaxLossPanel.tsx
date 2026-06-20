@@ -1,5 +1,5 @@
 import type { HarvestLot } from "../api/client";
-import { fmtMoney } from "../utils/money";
+import { fmtMoney, fmtPct } from "../utils/money";
 
 /**
  * Lists taxable holdings sitting at an unrealized loss - candidates for tax-loss
@@ -15,7 +15,7 @@ export default function TaxLossPanel({ lots }: { lots: HarvestLot[] }) {
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-baseline justify-between mb-1">
         <h3 className="font-semibold">Tax-Loss Harvesting Opportunities</h3>
-        <span className="text-sm" style={{ color: "#e06c75" }}>
+        <span className="text-sm text-bad">
           {fmtMoney(totalLoss)} total unrealized loss
         </span>
       </div>
@@ -45,11 +45,11 @@ export default function TaxLossPanel({ lots }: { lots: HarvestLot[] }) {
                 <td className="py-1.5 px-2 text-muted">{l.asset_class ?? "-"}</td>
                 <td className="py-1.5 px-2 text-right">{fmtMoney(l.current_value)}</td>
                 <td className="py-1.5 px-2 text-right">{fmtMoney(l.cost_basis)}</td>
-                <td className="py-1.5 px-2 text-right" style={{ color: "#e06c75" }}>
+                <td className="py-1.5 px-2 text-right text-bad">
                   {fmtMoney(l.unrealized_loss)}
                 </td>
-                <td className="py-1.5 px-2 text-right" style={{ color: "#e06c75" }}>
-                  {l.loss_pct.toFixed(1)}%
+                <td className="py-1.5 px-2 text-right text-bad">
+                  {fmtPct(l.loss_pct)}
                 </td>
               </tr>
             ))}

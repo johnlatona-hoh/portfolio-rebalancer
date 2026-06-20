@@ -5,6 +5,7 @@ import { listTags, autoClassifyTags, type Holding, type AccountType } from "../a
 import { usePortfolio } from "../state/portfolio";
 import { ASSET_CLASSES, ACCOUNT_TYPE_LABELS } from "../utils/assetClass";
 import { fmtMoney } from "../utils/money";
+import { downloadText } from "../utils/download";
 import {
   parseSchwabCsv,
   holdingsForAccount,
@@ -89,13 +90,7 @@ export default function SetupPage() {
   );
 
   function downloadTemplate() {
-    const blob = new Blob([TEMPLATE], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "portfolio_template.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadText(TEMPLATE, "portfolio_template.csv");
   }
 
   /** Find unknown tickers and auto-classify them from their broker descriptions

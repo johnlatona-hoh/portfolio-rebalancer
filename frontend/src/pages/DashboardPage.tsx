@@ -51,13 +51,14 @@ export default function DashboardPage() {
   const [pendingHorizon, setPendingHorizon] = useState(240);
   const horizonDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Strategy slider (gain_aversion)
+  // Strategy slider (gain_aversion) + rebalance band. The committed values live in refs
+  // so a debounced re-analyze always reads the latest of BOTH inputs (no stale capture
+  // when the two sliders are moved within each other's debounce window).
   const [sliderVal, setSliderVal] = useState(0);
-  const analyzeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Rebalance band (drift tolerance %) - debounced re-analyze
-  const [bandPct, setBandPct] = useState(0);
   const [pendingBand, setPendingBand] = useState(0);
+  const sliderRef = useRef(0);
+  const bandRef = useRef(0);
+  const analyzeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bandDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Inflation / real-vs-nominal toggle
@@ -93,37 +94,34 @@ export default function DashboardPage() {
     [analysis]
   );
 
-  const runAnalysis = useCallback(
-    (gainAversion: number, band: number) => {
-      if (!loaded) return;
-      setError(null);
-      analyzePortfolio(holdings, targets, gainAversion / 100, band)
-        .then(setAnalysis)
-        .catch((e) => setError(e?.response?.data?.detail ?? "Analysis failed."));
-    },
-    [holdings, targets, loaded]
-  );
+  // Re-analyze using the latest committed slider + band (read from refs).
+  const runAnalysis = useCallback(() => {
+    if (!loaded) return;
+    setError(null);
+    analyzePortfolio(holdings, targets, sliderRef.current / 100, bandRef.current)
+      .then(setAnalysis)
+      .catch((e) => setError(e?.response?.data?.detail ?? "Analysis failed."));
+  }, [holdings, targets, loaded]);
 
   // Re-analyze on portfolio change.
   useEffect(() => {
-    runAnalysis(sliderVal, bandPct);
+    runAnalysis();
   }, [holdings, targets, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced strategy slider re-analyze.
   function handleSlider(v: number) {
     setSliderVal(v);
+    sliderRef.current = v;
     if (analyzeDebounceRef.current) clearTimeout(analyzeDebounceRef.current);
-    analyzeDebounceRef.current = setTimeout(() => runAnalysis(v, bandPct), 1000);
+    analyzeDebounceRef.current = setTimeout(runAnalysis, 1000);
   }
 
   // Debounced rebalance-band re-analyze.
   function handleBand(v: number) {
     setPendingBand(v);
+    bandRef.current = v;
     if (bandDebounceRef.current) clearTimeout(bandDebounceRef.current);
-    bandDebounceRef.current = setTimeout(() => {
-      setBandPct(v);
-      runAnalysis(sliderVal, v);
-    }, 1000);
+    bandDebounceRef.current = setTimeout(runAnalysis, 1000);
   }
 
   // Horizon: update label immediately, debounce the actual projection by 1 s.
@@ -344,7 +342,6 @@ export default function DashboardPage() {
               netOfFees={netOfFees}
               monthlyContribution={contribution}
               benchmarkPoints={displayedBenchmark}
-              benchmarkName="Benchmark"
             />
           ) : (
             <p className="text-muted text-sm">Projecting…</p>

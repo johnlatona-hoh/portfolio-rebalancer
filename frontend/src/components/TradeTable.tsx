@@ -2,6 +2,7 @@ import Papa from "papaparse";
 import type { Trade } from "../api/client";
 import { ACCOUNT_TYPE_LABELS } from "../utils/assetClass";
 import { fmtMoney } from "../utils/money";
+import { downloadText } from "../utils/download";
 
 const ACTION_COLOR: Record<string, string> = {
   BUY: "text-good",
@@ -24,13 +25,7 @@ function tradeRows(trades: Trade[]) {
 
 function exportCsv(trades: Trade[]) {
   const csv = Papa.unparse(tradeRows(trades));
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `rebalance-plan-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadText(csv, `rebalance-plan-${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
 function printPlan(trades: Trade[]) {
