@@ -4,6 +4,11 @@ const BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 export const api = axios.create({ baseURL: BASE });
 
+/** Lightweight health ping used to warm the free-tier backend on app load. */
+export async function pingHealth(): Promise<void> {
+  await api.get("/health");
+}
+
 // ---------- Interfaces (keep in sync with backend/schemas.py) ----------
 
 export type AccountType = "taxable" | "tax_deferred" | "tax_free";

@@ -4,6 +4,7 @@ import { AuthProvider } from "./state/auth";
 import SetupPage from "./pages/SetupPage";
 import DashboardPage from "./pages/DashboardPage";
 import SnapshotPage from "./pages/SnapshotPage";
+import WarmupBanner from "./components/WarmupBanner";
 
 function Navbar() {
   const nav = useNavigate();
@@ -49,6 +50,7 @@ export default function App() {
     <AuthProvider>
       <PortfolioProvider>
         <div className="min-h-screen bg-surface text-gray-100">
+          <WarmupBanner />
           <Navbar />
           <main className="max-w-screen-xl mx-auto px-4 py-6">
             <Routes>
