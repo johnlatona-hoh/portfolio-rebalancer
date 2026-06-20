@@ -21,6 +21,8 @@ interface PortfolioState {
   loadPortfolio: (holdings: Holding[], targets: Record<string, number>) => void;
   /** Update holdings with refreshed prices without clearing accounts. */
   refreshHoldings: (updated: Holding[]) => void;
+  /** Clear any price-refresh override, restoring holdings to the original uploaded CSV values. */
+  clearPriceOverride: () => void;
 }
 
 const Ctx = createContext<PortfolioState | null>(null);
@@ -54,6 +56,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
   // Price refresh: update holdings values without clearing the accounts list.
   const refreshHoldings = (updated: Holding[]) => setHoldingsOverride(updated);
+  const clearPriceOverride = () => setHoldingsOverride(null);
 
   return (
     <Ctx.Provider
@@ -67,6 +70,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         loaded: holdings.length > 0,
         loadPortfolio,
         refreshHoldings,
+        clearPriceOverride,
       }}
     >
       {children}

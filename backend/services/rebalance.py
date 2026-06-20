@@ -94,7 +94,10 @@ def within_band_classes(blended, total, targets, band_pct):
     for c in set(blended) | set(targets):
         cur_pct = (blended.get(c, 0.0) / total * 100) if total else 0.0
         tgt = float(targets.get(c, 0.0))
-        if abs(cur_pct - tgt) <= band_pct and (tgt > 0 or cur_pct > 0):
+        # Only freeze classes where the portfolio already holds something.
+        # A class with a target but zero current holdings must never be frozen —
+        # doing so silently prevents the rebalancer from buying into it at all.
+        if abs(cur_pct - tgt) <= band_pct and cur_pct > 0:
             out.add(c)
     return out
 

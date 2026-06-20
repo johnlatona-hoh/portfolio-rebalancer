@@ -41,7 +41,7 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 }
 
 export default function DashboardPage() {
-  const { holdings, targets, loaded, accounts, setAccounts, loadPortfolio, refreshHoldings } = usePortfolio();
+  const { holdings, targets, loaded, accounts, setAccounts, loadPortfolio, refreshHoldings, clearPriceOverride } = usePortfolio();
 
   // Live price refresh
   const [priceMsg, setPriceMsg] = useState<string | null>(null);
@@ -208,13 +208,12 @@ export default function DashboardPage() {
       );
     },
     onError: () => setPriceMsg("Could not refresh prices. Try again later."),
-    onSettled: () => setPriceMsg((m) => m),
   });
 
   function refreshPrices() {
     if (!loaded) return;
     setPriceMsg(null);
-    const tickers = [...new Set(holdings.map((h) => h.ticker).filter(Boolean))];
+    const tickers = [...new Set(holdings.map((h) => h.ticker).filter((t) => t && t !== "CASH"))];
     priceMutation.mutate(tickers);
   }
 
@@ -253,7 +252,14 @@ export default function DashboardPage() {
       }
     }
     if (errors.length) setParseErrors(errors);
-    if (newAccounts.length) setAccounts([...accounts, ...newAccounts]);
+    if (newAccounts.length) {
+      // Replace any account whose name matches a newly parsed one; keep others (different broker).
+      const merged = [
+        ...accounts.filter((a) => !newAccounts.some((n) => n.accountName === a.accountName)),
+        ...newAccounts,
+      ];
+      setAccounts(merged);
+    }
   }
 
   function removeAccount(idx: number) {
@@ -276,6 +282,8 @@ export default function DashboardPage() {
     setInsights(null);
     setGlidePathParams(GLIDE_PATH_DEFAULT);
     glidePathRef.current = GLIDE_PATH_DEFAULT;
+    clearPriceOverride();
+    setPriceMsg(null);
     clearTimeout(analyzeDebounceRef.current ?? undefined);
     runAnalysis();
   }
