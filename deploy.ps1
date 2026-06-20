@@ -119,26 +119,32 @@ if ($fchanged) {
     Write-Host "  Fine if this commit had no frontend changes; otherwise check the Vercel dashboard." -ForegroundColor Yellow
 }
 
-# --- 4. Verify backend (Render) actually serves the new code ---
-Step "Waiting for Render backend to serve new code (up to 15 min)"
+# --- 4. Deploy backend (Render). Render's git auto-deploy is unreliable, and the marker
+# check below can't detect logic-only changes (no new schema field), so ALWAYS force a
+# fresh build via the deploy hook when it's available, then wait for the marker. ---
+if ($env:RENDER_DEPLOY_HOOK) {
+    Step "Triggering Render deploy via hook (forces a rebuild even for logic-only changes)"
+    Invoke-WebRequest -Uri $env:RENDER_DEPLOY_HOOK -Method POST -UseBasicParsing | Out-Null
+    Ok "Render deploy triggered"
+    Write-Host "  Note: the check below confirms the schema marker; logic-only changes still" -ForegroundColor DarkGray
+    Write-Host "  need a behavioral spot-check after deploy." -ForegroundColor DarkGray
+} else {
+    Write-Host "RENDER_DEPLOY_HOOK not set - relying on Render git auto-deploy (unreliable)." -ForegroundColor Yellow
+}
+
+Step "Waiting for Render backend to come back up (up to 15 min)"
 $deadline = (Get-Date).AddMinutes(15)
 $live = $false
+Start-Sleep -Seconds 20  # give the new build time to start before polling
 while ((Get-Date) -lt $deadline) {
     if (Test-BackendLive) { $live = $true; break }
-    Write-Host ("  {0}  still old code, waiting..." -f (Get-Date -Format HH:mm:ss))
+    Write-Host ("  {0}  waiting for backend..." -f (Get-Date -Format HH:mm:ss))
     Start-Sleep -Seconds 20
 }
 if ($live) {
-    Ok "Backend is serving the new code"
+    Ok "Backend schema marker present and healthy"
 } else {
-    Write-Host "Backend did NOT pick up the new code within 15 min." -ForegroundColor Red
-    Write-Host "  -> Trigger a manual deploy via the Render Deploy Hook (set RENDER_DEPLOY_HOOK env), or" -ForegroundColor Yellow
-    Write-Host "     check the Render dashboard build logs for $BACKEND_URL." -ForegroundColor Yellow
-    if ($env:RENDER_DEPLOY_HOOK) {
-        Step "RENDER_DEPLOY_HOOK is set - triggering manual Render deploy"
-        curl.exe -s -X POST $env:RENDER_DEPLOY_HOOK | Out-Host
-        Write-Host "Re-run 'pwsh ./deploy.ps1 -VerifyOnly' in a few minutes to confirm." -ForegroundColor Yellow
-    }
+    Write-Host "Backend did NOT come back healthy within 15 min - check the Render dashboard." -ForegroundColor Red
     exit 1
 }
 
