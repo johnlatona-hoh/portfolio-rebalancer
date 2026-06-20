@@ -1,3 +1,4 @@
+import Papa from "papaparse";
 import type { Trade } from "../api/client";
 import { ACCOUNT_TYPE_LABELS } from "../utils/assetClass";
 import { fmtMoney } from "../utils/money";
@@ -7,6 +8,58 @@ const ACTION_COLOR: Record<string, string> = {
   SELL: "text-bad",
   HOLD: "text-muted",
 };
+
+function tradeRows(trades: Trade[]) {
+  return trades.map((t) => ({
+    account: t.account_name,
+    account_type: ACCOUNT_TYPE_LABELS[t.account_type as keyof typeof ACCOUNT_TYPE_LABELS] ?? t.account_type,
+    action: t.action,
+    asset_class: t.asset_class,
+    ticker: t.ticker ?? "",
+    amount: Math.round(t.amount * 100) / 100,
+    est_gain: Math.round(t.est_gain * 100) / 100,
+    tax_note: t.tax_note,
+  }));
+}
+
+function exportCsv(trades: Trade[]) {
+  const csv = Papa.unparse(tradeRows(trades));
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `rebalance-plan-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function printPlan(trades: Trade[]) {
+  const rows = tradeRows(trades);
+  const body = rows
+    .map(
+      (r) =>
+        `<tr><td>${r.account}</td><td>${r.account_type}</td><td>${r.action}</td>` +
+        `<td>${r.asset_class}</td><td>${r.ticker}</td><td style="text-align:right">${fmtMoney(r.amount)}</td>` +
+        `<td style="text-align:right">${r.est_gain > 0 ? "+" + fmtMoney(r.est_gain) : "-"}</td><td>${r.tax_note}</td></tr>`
+    )
+    .join("");
+  const html = `<!doctype html><html><head><title>Rebalance Plan</title>
+    <style>body{font-family:Arial,sans-serif;margin:24px;color:#111}
+    h1{font-size:18px} table{border-collapse:collapse;width:100%;font-size:12px}
+    th,td{border:1px solid #ccc;padding:6px;text-align:left}
+    th{background:#f2f2f2}</style></head><body>
+    <h1>Rebalancing Trade Plan</h1>
+    <p>Generated ${new Date().toLocaleString()}</p>
+    <table><thead><tr><th>Account</th><th>Type</th><th>Action</th><th>Asset Class</th>
+    <th>Ticker</th><th>Amount</th><th>Est. Gain</th><th>Tax note</th></tr></thead>
+    <tbody>${body}</tbody></table></body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) return;
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  w.print();
+}
 
 /** Group trades by account, returning ordered account names. */
 function groupByAccount(trades: Trade[]): { acct: string; acctType: string; rows: Trade[] }[] {
@@ -33,6 +86,22 @@ export default function TradeTable({ trades }: { trades: Trade[] }) {
 
   return (
     <div className="space-y-1">
+      <div className="flex justify-end gap-2 mb-2">
+        <button
+          onClick={() => exportCsv(trades)}
+          className="text-xs px-2 py-1 rounded border border-border hover:bg-surface"
+          title="Download the trade plan as a CSV file"
+        >
+          ⤓ Export CSV
+        </button>
+        <button
+          onClick={() => printPlan(trades)}
+          className="text-xs px-2 py-1 rounded border border-border hover:bg-surface"
+          title="Open a printable trade sheet"
+        >
+          ⎙ Print
+        </button>
+      </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-muted border-b border-border">
