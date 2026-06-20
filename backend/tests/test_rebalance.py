@@ -382,3 +382,30 @@ def test_band_excludes_intentional_drift_from_max_drift():
     targets = {"US Stock": 50, "Taxable Bond": 50}
     banded = rebalance.analyze(holdings, targets, _tags(), drift_band_pct=6.0)
     assert banded["max_drift_pct"] < 1.0
+
+
+def test_interpolate_glide_path_scale_up():
+    # 70% equity in base, target 80% -> US Stock + International scaled up
+    targets = {"US Stock": 35, "International": 35, "Taxable Bond": 20, "Cash": 10}
+    result = rebalance.interpolate_glide_path(42, 65, 80.0, 40.0, targets)
+    equity_total = result.get("US Stock", 0) + result.get("International", 0)
+    assert abs(equity_total - 80.0) < 0.1
+    non_equity = result.get("Taxable Bond", 0) + result.get("Cash", 0)
+    assert abs(non_equity - 20.0) < 0.1
+    # US Stock and International should be scaled equally (same starting ratio)
+    assert abs(result["US Stock"] - result["International"]) < 0.01
+
+
+def test_interpolate_glide_path_scale_down():
+    targets = {"US Stock": 40, "International": 30, "Taxable Bond": 30}
+    result = rebalance.interpolate_glide_path(60, 65, 40.0, 30.0, targets)
+    equity_total = result.get("US Stock", 0) + result.get("International", 0)
+    assert abs(equity_total - 40.0) < 0.1
+    assert abs(result.get("Taxable Bond", 0) - 60.0) < 0.1
+
+
+def test_interpolate_glide_path_no_equity_classes():
+    # Base targets have no equity -> returns unchanged
+    targets = {"Taxable Bond": 60, "Cash": 40}
+    result = rebalance.interpolate_glide_path(42, 65, 80.0, 40.0, targets)
+    assert result == targets

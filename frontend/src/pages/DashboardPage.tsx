@@ -30,6 +30,8 @@ import TipsBox from "../components/TipsBox";
 import TaxLossPanel from "../components/TaxLossPanel";
 import BenchmarkControl, { type Benchmark } from "../components/BenchmarkControl";
 import DriftBandControl from "../components/DriftBandControl";
+import GlidePathControl, { GLIDE_PATH_DEFAULT } from "../components/GlidePathControl";
+import type { GlidePathParams } from "../api/client";
 import RiskPanel from "../components/RiskPanel";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -76,6 +78,10 @@ export default function DashboardPage() {
   // Benchmark overlay
   const [benchmark, setBenchmark] = useState<Benchmark>(null);
 
+  // Glide-path mode
+  const [glidePathParams, setGlidePathParams] = useState<GlidePathParams>(GLIDE_PATH_DEFAULT);
+  const glidePathRef = useRef<GlidePathParams>(GLIDE_PATH_DEFAULT);
+
   // AI insights
   const [insights, setInsights] = useState<string[] | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
@@ -97,7 +103,7 @@ export default function DashboardPage() {
   // Analysis mutation — variables are passed at call time to avoid stale closures.
   const analyzeMutation = useMutation({
     mutationFn: (p: { h: typeof holdings; t: typeof targets }) =>
-      analyzePortfolio(p.h, p.t, sliderRef.current / 100, bandRef.current),
+      analyzePortfolio(p.h, p.t, sliderRef.current / 100, bandRef.current, glidePathRef.current),
     onSuccess: setAnalysis,
     onError: (e: { response?: { data?: { detail?: string } } }) =>
       setError(e?.response?.data?.detail ?? "Analysis failed."),
@@ -109,6 +115,14 @@ export default function DashboardPage() {
     setError(null);
     analyzeMutation.mutate({ h: holdings, t: targets });
   }, [holdings, targets, loaded]);
+
+  // Debounced glide-path re-analyze when params change.
+  function handleGlidePath(p: GlidePathParams) {
+    setGlidePathParams(p);
+    glidePathRef.current = p;
+    if (analyzeDebounceRef.current) clearTimeout(analyzeDebounceRef.current);
+    analyzeDebounceRef.current = setTimeout(runAnalysis, 1000);
+  }
 
   // Re-analyze on portfolio change.
   useEffect(() => {
@@ -260,6 +274,8 @@ export default function DashboardPage() {
     setPendingContribution(0);
     setBenchmark(null);
     setInsights(null);
+    setGlidePathParams(GLIDE_PATH_DEFAULT);
+    glidePathRef.current = GLIDE_PATH_DEFAULT;
     clearTimeout(analyzeDebounceRef.current ?? undefined);
     runAnalysis();
   }
@@ -393,12 +409,23 @@ export default function DashboardPage() {
           </p>
         )}
         <DriftBandControl value={pendingBand} onChange={handleBand} />
+        <div className="border-t border-border pt-3">
+          <GlidePathControl value={glidePathParams} onChange={handleGlidePath} />
+        </div>
       </Card>
 
       {/* ---- allocation + projection ---- */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <h3 className="font-semibold mb-3">Current vs Target (Blended)</h3>
+          {analysis.effective_targets && glidePathParams.enabled && (
+            <p className="text-xs text-muted mb-2 p-2 rounded bg-surface border border-border">
+              Glide-path active: targets adjusted to{" "}
+              <strong className="text-foreground">{glidePathParams.equityPctNow}% equity</strong> now
+              {" → "}
+              {glidePathParams.equityPctRetirement}% at age {glidePathParams.retirementAge}.
+            </p>
+          )}
           <AllocationBars
             blended={analysis.blended}
             holdings={holdings}

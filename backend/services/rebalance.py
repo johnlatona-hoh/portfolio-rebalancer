@@ -592,7 +592,7 @@ def analyze(holdings, targets, tags, gain_aversion: float = 0.0, drift_band_pct:
             "within_band": cls in within_band,
         })
 
-    unknown = sorted({h["ticker"] for h in holdings if h["ticker"] not in tags})
+    unknown = sorted({h["ticker"] for h in holdings if h.get("ticker") not in tags})
     # Largest residual drift the plan is actually trying to close - exclude band-frozen
     # classes, whose drift is an intentional, accepted tolerance (not a planning failure).
     max_drift = max((abs(b["drift_pct"]) for b in blended_view if not b["within_band"]),
@@ -610,4 +610,54 @@ def analyze(holdings, targets, tags, gain_aversion: float = 0.0, drift_band_pct:
         "unknown_tickers": unknown,
         "risk": compute_risk_metrics(holdings, by_account_data, tags, total),
         "tax_loss_harvest": _tax_loss_harvest(holdings, tags),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Glide-path helpers
+# ---------------------------------------------------------------------------
+
+_EQUITY_CLASSES = {"US Stock", "International"}
+
+
+def interpolate_glide_path(
+    current_age: int,
+    retirement_age: int,
+    equity_pct_now: float,
+    equity_pct_retirement: float,
+    base_targets: dict,
+) -> dict:
+    """Scale US Stock + International targets to match the user-specified equity% for
+    today; all other classes scale proportionally to fill (100 - equity_pct_now)%.
+
+    The analyze() endpoint applies this BEFORE the rebalancing engine so the trade plan
+    reflects the age-adjusted targets rather than the raw targets the user entered.
+
+    Args:
+        current_age:         user's current age (years)
+        retirement_age:      target retirement age (years)
+        equity_pct_now:      desired equity % at current_age (0-100)
+        equity_pct_retirement: desired equity % at retirement_age (not used here;
+                               stored for informational display on the frontend)
+        base_targets:        dict {asset_class: target_pct} (need not sum to 100)
+
+    Returns a new dict with the same keys, rescaled so equity classes sum to equity_pct_now
+    and non-equity classes fill the remainder.
+    """
+    target_equity = float(equity_pct_now)
+
+    current_equity = sum(base_targets.get(c, 0.0) for c in _EQUITY_CLASSES)
+    if current_equity <= 0:
+        # No equity classes in the base targets - nothing to scale.
+        return dict(base_targets)
+
+    equity_scale = target_equity / current_equity
+
+    non_equity_current = sum(v for k, v in base_targets.items() if k not in _EQUITY_CLASSES)
+    non_equity_target = 100.0 - target_equity
+    non_equity_scale = (non_equity_target / non_equity_current) if non_equity_current > 0 else 1.0
+
+    return {
+        k: round(v * (equity_scale if k in _EQUITY_CLASSES else non_equity_scale), 2)
+        for k, v in base_targets.items()
     }

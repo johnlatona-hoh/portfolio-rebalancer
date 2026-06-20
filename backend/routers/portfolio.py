@@ -12,11 +12,26 @@ router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(req: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
     """Roll holdings into asset classes, compute deltas vs. target, and produce a
-    tax-aware trade plan plus an asset-location grade."""
+    tax-aware trade plan plus an asset-location grade. When glide_path=True the
+    targets are adjusted via interpolate_glide_path() before the engine runs."""
     tags = await load_tags(db)
     holdings = [h.model_dump() for h in req.holdings]
-    return rebalance.analyze(holdings, req.targets, tags, gain_aversion=req.gain_aversion,
-                             drift_band_pct=req.drift_band_pct)
+
+    if req.glide_path and req.current_age is not None and req.equity_pct_now is not None:
+        targets = rebalance.interpolate_glide_path(
+            req.current_age,
+            req.retirement_age if req.retirement_age is not None else req.current_age + 30,
+            req.equity_pct_now,
+            req.equity_pct_retirement if req.equity_pct_retirement is not None else req.equity_pct_now,
+            req.targets,
+        )
+    else:
+        targets = req.targets
+
+    result = rebalance.analyze(holdings, targets, tags, gain_aversion=req.gain_aversion,
+                               drift_band_pct=req.drift_band_pct)
+    result["effective_targets"] = targets if req.glide_path else None
+    return result
 
 
 @router.post("/project", response_model=ProjectResponse)

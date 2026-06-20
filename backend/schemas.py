@@ -26,6 +26,13 @@ class AnalyzeRequest(BaseModel):
     gain_aversion: float = 0.0
     # rebalance band: classes within +/- this many pct points of target are left alone.
     drift_band_pct: float = 0.0
+    # glide-path: when True the engine adjusts equity targets to equity_pct_now before
+    # rebalancing. US Stock + International are scaled proportionally to hit that total.
+    glide_path: bool = False
+    current_age: int | None = None
+    retirement_age: int | None = None
+    equity_pct_now: float | None = None       # desired equity% at current_age (0-100)
+    equity_pct_retirement: float | None = None  # desired equity% at retirement_age (informational)
 
 
 # ---------- Allocation + trades output ----------
@@ -129,6 +136,7 @@ class AnalyzeResponse(BaseModel):
     unknown_tickers: list[str]  # tickers with no tag - caller should classify
     risk: PortfolioRisk | None = None
     tax_loss_harvest: list[HarvestLot] = []  # taxable lots at an unrealized loss
+    effective_targets: dict[str, float] | None = None  # interpolated targets when glide_path=True
 
 
 # ---------- Projection ----------

@@ -122,6 +122,15 @@ export interface AnalyzeResponse {
   unknown_tickers: string[];
   risk: PortfolioRisk | null;
   tax_loss_harvest: HarvestLot[];  // taxable lots at an unrealized loss
+  effective_targets: Record<string, number> | null;  // interpolated targets (glide-path only)
+}
+
+export interface GlidePathParams {
+  enabled: boolean;
+  currentAge: number;
+  retirementAge: number;
+  equityPctNow: number;
+  equityPctRetirement: number;
 }
 
 export interface ProjectionPoint {
@@ -203,13 +212,23 @@ export async function analyzePortfolio(
   holdings: Holding[],
   targets: Record<string, number>,
   gainAversion = 0,
-  driftBandPct = 0
+  driftBandPct = 0,
+  glidePath?: GlidePathParams
 ): Promise<AnalyzeResponse> {
   const { data } = await api.post<AnalyzeResponse>("/portfolio/analyze", {
     holdings,
     targets,
     gain_aversion: gainAversion,
     drift_band_pct: driftBandPct,
+    ...(glidePath?.enabled
+      ? {
+          glide_path: true,
+          current_age: glidePath.currentAge,
+          retirement_age: glidePath.retirementAge,
+          equity_pct_now: glidePath.equityPctNow,
+          equity_pct_retirement: glidePath.equityPctRetirement,
+        }
+      : {}),
   });
   return data;
 }
