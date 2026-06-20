@@ -18,6 +18,8 @@ interface Props {
   realDollars?: boolean;      // label axes as "today's $" vs "future $"
   netOfFees?: boolean;        // returns shown after subtracting expense ratios
   monthlyContribution?: number; // >0 contributing, <0 withdrawing
+  benchmarkPoints?: ProjectionPoint[] | null; // optional overlay (median line)
+  benchmarkName?: string;     // label for the legend/caption
 }
 
 const MEDIAN_COLOR = "#f5a623";   // bright orange — median (p50)
@@ -25,19 +27,24 @@ const FAN_COLOR = "#6b8cba";      // muted blue — p10-p90 fan
 const DET_COLOR = "#4caf7d";      // green — steady/deterministic return
 
 /** Monte Carlo fan chart: p10–p90 shaded band, distinct amber median, dashed deterministic. */
+const BENCH_COLOR = "#b48ead";    // muted purple - benchmark overlay
+
 export default function ProjectionChart({
   points,
   height = 260,
   realDollars = true,
   netOfFees = false,
   monthlyContribution = 0,
+  benchmarkPoints = null,
+  benchmarkName = "Benchmark",
 }: Props) {
-  const data = points.map((p) => ({
+  const data = points.map((p, i) => ({
     year: +(p.month / 12).toFixed(2),
     p10: p.p10,
     band: p.p90 - p.p10,
     p50: p.p50,
     deterministic: p.deterministic,
+    bench: benchmarkPoints?.[i]?.p50 ?? null,
   }));
 
   const lastData = data[data.length - 1];
@@ -109,6 +116,19 @@ export default function ProjectionChart({
             isAnimationActive={false}
           />
 
+          {/* Benchmark median overlay — purple dashed (only when provided) */}
+          {benchmarkPoints && (
+            <Line
+              dataKey="bench"
+              stroke={BENCH_COLOR}
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              dot={false}
+              isAnimationActive={false}
+              connectNulls
+            />
+          )}
+
           {/* End-callout labels via ReferenceLine at the horizon */}
           {lastPoint && (
             <>
@@ -166,6 +186,12 @@ export default function ProjectionChart({
           <span className="inline-block w-6 h-0.5" style={{ background: DET_COLOR, height: 2 }} />
           Steady return (no volatility)
         </span>
+        {benchmarkPoints && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-6 h-0.5" style={{ background: BENCH_COLOR, height: 2 }} />
+            {benchmarkName} (median)
+          </span>
+        )}
         <span className="ml-auto opacity-60">{realDollars ? "Today's $" : "Future $"}</span>
       </div>
 

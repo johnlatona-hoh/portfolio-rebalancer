@@ -141,6 +141,9 @@ class ProjectRequest(BaseModel):
     fee_drag: float = 0.0
     # dollars added at month-end (negative = withdrawal), spread pro-rata by weight
     monthly_contribution: float = 0.0
+    # optional benchmark allocation as class-weight percentages, e.g. {"US Stock": 60,
+    # "International": 40}; projected with the same starting dollars for an overlay line
+    benchmark: dict[str, float] | None = None
 
 
 class ProjectionPoint(BaseModel):
@@ -154,6 +157,7 @@ class ProjectionPoint(BaseModel):
 class ProjectResponse(BaseModel):
     points: list[ProjectionPoint]
     starting_value: float
+    benchmark_points: list[ProjectionPoint] | None = None  # overlay, same starting value
 
 
 # ---------- Ticker tags ----------

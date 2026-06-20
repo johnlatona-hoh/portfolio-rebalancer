@@ -21,8 +21,9 @@ async def analyze(req: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/project", response_model=ProjectResponse)
 async def project(req: ProjectRequest):
     """Monte Carlo + deterministic projection of the portfolio forward. Pure math -
-    no DB access needed."""
-    return projections.project(
+    no DB access needed. Optionally overlays a benchmark allocation projected with the
+    same starting dollars (apples-to-apples)."""
+    result = projections.project(
         req.value_by_class,
         horizon_months=req.horizon_months,
         n_paths=req.n_paths,
@@ -30,3 +31,21 @@ async def project(req: ProjectRequest):
         fee_drag=req.fee_drag,
         monthly_contribution=req.monthly_contribution,
     )
+
+    if req.benchmark:
+        starting_value = sum(req.value_by_class.values())
+        total_weight = sum(req.benchmark.values()) or 1.0
+        bench_value_by_class = {
+            cls: (w / total_weight) * starting_value for cls, w in req.benchmark.items()
+        }
+        bench = projections.project(
+            bench_value_by_class,
+            horizon_months=req.horizon_months,
+            n_paths=req.n_paths,
+            assumptions=req.assumptions,
+            fee_drag=req.fee_drag,
+            monthly_contribution=req.monthly_contribution,
+        )
+        result["benchmark_points"] = bench["points"]
+
+    return result

@@ -134,6 +134,7 @@ export interface ProjectionPoint {
 export interface ProjectResponse {
   points: ProjectionPoint[];
   starting_value: number;
+  benchmark_points?: ProjectionPoint[] | null;
 }
 
 export interface TickerTag {
@@ -191,6 +192,7 @@ export async function projectPortfolio(
     assumptions?: Record<string, { mean: number; stdev: number }>;
     feeDrag?: number;            // annual decimal, e.g. 0.0005
     monthlyContribution?: number; // negative = withdrawal
+    benchmark?: Record<string, number>; // class-weight % for an overlay line
   }
 ): Promise<ProjectResponse> {
   const { data } = await api.post<ProjectResponse>("/portfolio/project", {
@@ -200,6 +202,7 @@ export async function projectPortfolio(
     assumptions: opts?.assumptions ?? null,
     fee_drag: opts?.feeDrag ?? 0,
     monthly_contribution: opts?.monthlyContribution ?? 0,
+    benchmark: opts?.benchmark ?? null,
   });
   return data;
 }

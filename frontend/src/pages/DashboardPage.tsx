@@ -25,6 +25,7 @@ import StrategySlider from "../components/StrategySlider";
 import InflationControls from "../components/InflationControls";
 import TipsBox from "../components/TipsBox";
 import TaxLossPanel from "../components/TaxLossPanel";
+import BenchmarkControl, { type Benchmark } from "../components/BenchmarkControl";
 import RiskPanel from "../components/RiskPanel";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -62,6 +63,9 @@ export default function DashboardPage() {
   const [contribution, setContribution] = useState(0);
   const [pendingContribution, setPendingContribution] = useState(0);
   const contribDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Benchmark overlay
+  const [benchmark, setBenchmark] = useState<Benchmark>(null);
 
   // AI insights
   const [insights, setInsights] = useState<string[] | null>(null);
@@ -123,21 +127,29 @@ export default function DashboardPage() {
   // Fee drag (annual decimal) applied only when the net-of-fees toggle is on.
   const feeDrag = netOfFees && analysis?.risk ? analysis.risk.weighted_fee_pct / 100 : 0;
 
-  // Re-project when committed horizon/contribution, fee toggle, or analysis changes.
+  // Re-project when committed horizon/contribution, fee toggle, benchmark, or analysis changes.
   useEffect(() => {
     if (!analysis) return;
     projectPortfolio(valueByClass, horizon, {
       feeDrag,
       monthlyContribution: contribution,
+      benchmark: benchmark ?? undefined,
     })
       .then(setProjection)
       .catch(() => setProjection(null));
-  }, [analysis, horizon, valueByClass, feeDrag, contribution]);
+  }, [analysis, horizon, valueByClass, feeDrag, contribution, benchmark]);
 
   // Deflate projection client-side for real-dollars view.
   const displayedPoints = useMemo(() => {
     if (!projection) return null;
     return realDollars ? deflatePoints(projection.points, inflationPct) : projection.points;
+  }, [projection, realDollars, inflationPct]);
+
+  const displayedBenchmark = useMemo(() => {
+    if (!projection?.benchmark_points) return null;
+    return realDollars
+      ? deflatePoints(projection.benchmark_points, inflationPct)
+      : projection.benchmark_points;
   }, [projection, realDollars, inflationPct]);
 
   async function refreshPrices() {
@@ -306,6 +318,7 @@ export default function DashboardPage() {
                   : ""}
               </span>
             </label>
+            <BenchmarkControl value={benchmark} onChange={setBenchmark} />
           </div>
           {displayedPoints ? (
             <ProjectionChart
@@ -313,6 +326,8 @@ export default function DashboardPage() {
               realDollars={realDollars}
               netOfFees={netOfFees}
               monthlyContribution={contribution}
+              benchmarkPoints={displayedBenchmark}
+              benchmarkName="Benchmark"
             />
           ) : (
             <p className="text-muted text-sm">Projecting…</p>
