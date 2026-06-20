@@ -18,6 +18,18 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class AICache(Base):
+    """Caches Gemini advisor output keyed by a hash of (kind + portfolio summary), so an
+    unchanged portfolio viewed repeatedly does not re-query the API. TTL enforced in the
+    router. New table - created by create_tables(), no migration needed."""
+
+    __tablename__ = "rebalancer_ai_cache"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)  # sha256(kind + canonical-JSON summary)
+    response: Mapped[str] = mapped_column(Text)                 # JSON-encoded generator result
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class TickerTag(Base):
     """Maps a ticker symbol to its asset class and tax-efficiency profile so the
     rebalancing engine knows how to treat it. Seeded with common index tickers;
