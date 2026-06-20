@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Papa from "papaparse";
 import { listTags, autoClassifyTags, type Holding, type AccountType } from "../api/client";
 import { usePortfolio } from "../state/portfolio";
 import { ASSET_CLASSES, ACCOUNT_TYPE_LABELS } from "../utils/assetClass";
@@ -8,6 +7,7 @@ import { fmtMoney } from "../utils/money";
 import { downloadText } from "../utils/download";
 import {
   parseSchwabCsv,
+  parseTemplateCsv,
   holdingsForAccount,
   inferAccountType,
   type ParsedAccount,
@@ -35,43 +35,6 @@ const DEFAULT_TARGETS: Record<string, number> = {
   Crypto: 4,
   "Other Alternatives": 4,
 };
-
-/** Fallback parser for the simple canonical template, grouped into accounts. */
-function parseTemplateCsv(text: string, fileName: string): ParsedAccount[] {
-  const res = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
-  const groups = new Map<string, ParsedAccount>();
-  for (const row of res.data) {
-    const ticker = (row.ticker ?? "").trim().toUpperCase();
-    if (!ticker) continue;
-    const account_name = (row.account_name ?? "").trim() || "Unnamed";
-    const typeRaw = (row.account_type ?? "").trim() as AccountType;
-    const account_type = ACCOUNT_TYPES.includes(typeRaw) ? typeRaw : inferAccountType(account_name);
-    if (!groups.has(account_name)) {
-      groups.set(account_name, {
-        fileName,
-        accountName: account_name,
-        accountType: account_type,
-        holdings: [],
-        cashValue: 0,
-        positionCount: 0,
-        meta: {},
-      });
-    }
-    const acct = groups.get(account_name)!;
-    const current_value = Number(row.current_value) || 0;
-    if (ticker === "CASH") acct.cashValue += current_value;
-    acct.holdings.push({
-      account_name,
-      account_type,
-      ticker,
-      quantity: Number(row.quantity) || 0,
-      cost_basis: Number(row.cost_basis) || 0,
-      current_value,
-    });
-    if (ticker !== "CASH") acct.positionCount += 1;
-  }
-  return [...groups.values()];
-}
 
 export default function SetupPage() {
   const nav = useNavigate();

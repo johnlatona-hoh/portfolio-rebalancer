@@ -11,6 +11,7 @@ import {
   type TickerTag,
 } from "../api/client";
 import { usePortfolio } from "../state/portfolio";
+import { parseSchwabCsv, parseTemplateCsv } from "../utils/schwabParse";
 import { ACCOUNT_TYPE_LABELS } from "../utils/assetClass";
 import { fmtMoney } from "../utils/money";
 import { deflatePoints } from "../utils/inflation";
@@ -36,7 +37,7 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 }
 
 export default function DashboardPage() {
-  const { holdings, targets, loaded, loadPortfolio } = usePortfolio();
+  const { holdings, targets, loaded, accounts, setAccounts, loadPortfolio, refreshHoldings } = usePortfolio();
 
   // Live price refresh
   const [pricing, setPricing] = useState(false);
@@ -182,7 +183,7 @@ export default function DashboardPage() {
         const q = quotes[h.ticker.toUpperCase()];
         return q ? { ...h, current_value: Math.round(q.price * h.quantity * 100) / 100 } : h;
       });
-      loadPortfolio(updated, targets);
+      refreshHoldings(updated);
       const missing = tickers.length - n;
       setPriceMsg(
         `Updated ${n} of ${tickers.length} holdings` +
@@ -194,6 +195,56 @@ export default function DashboardPage() {
     } finally {
       setPricing(false);
     }
+  }
+
+  const [parseErrors, setParseErrors] = useState<string[]>([]);
+
+  async function parseFiles(files: FileList) {
+    setParseErrors([]);
+    const errors: string[] = [];
+    const newAccounts: typeof accounts = [];
+    for (const file of Array.from(files)) {
+      try {
+        const text = await file.text();
+        const schwab = parseSchwabCsv(text, file.name);
+        if (schwab) {
+          newAccounts.push(schwab);
+        } else {
+          const tmpl = parseTemplateCsv(text, file.name);
+          if (tmpl.length === 0) {
+            errors.push(`${file.name}: not a recognized Schwab export or template CSV.`);
+          } else {
+            newAccounts.push(...tmpl);
+          }
+        }
+      } catch (e: unknown) {
+        errors.push(`${file.name}: ${e instanceof Error ? e.message : "could not read file"}`);
+      }
+    }
+    if (errors.length) setParseErrors(errors);
+    if (newAccounts.length) setAccounts([...accounts, ...newAccounts]);
+  }
+
+  function removeAccount(idx: number) {
+    setAccounts(accounts.filter((_, i) => i !== idx));
+  }
+
+  function resetSettings() {
+    setSliderVal(0);
+    sliderRef.current = 0;
+    setPendingBand(0);
+    bandRef.current = 0;
+    setHorizon(240);
+    setPendingHorizon(240);
+    setRealDollars(true);
+    setInflationPct(2.5);
+    setNetOfFees(false);
+    setContribution(0);
+    setPendingContribution(0);
+    setBenchmark(null);
+    setInsights(null);
+    clearTimeout(analyzeDebounceRef.current ?? undefined);
+    runAnalysis();
   }
 
   async function loadInsights() {
@@ -238,23 +289,70 @@ export default function DashboardPage() {
               <div className="text-xs uppercase text-muted">Total Portfolio</div>
               <div className="text-2xl font-semibold mt-1">{fmtMoney(analysis.total_value)}</div>
             </div>
-            <button
-              onClick={refreshPrices}
-              disabled={pricing}
-              className="text-xs px-2 py-1 rounded border border-border hover:bg-surface disabled:opacity-50 whitespace-nowrap"
-              title="Fetch the latest market prices and recompute each holding's value (quantity x price). Cached for 24h."
-            >
-              {pricing ? "Refreshing…" : "↻ Refresh prices"}
-            </button>
+            <div className="flex flex-col gap-1 items-end">
+              <button
+                onClick={refreshPrices}
+                disabled={pricing}
+                className="text-xs px-2 py-1 rounded border border-border hover:bg-surface disabled:opacity-50 whitespace-nowrap"
+                title="Fetch the latest market prices and recompute each holding's value (quantity x price). Cached for 24h."
+              >
+                {pricing ? "Refreshing…" : "↻ Refresh prices"}
+              </button>
+              <button
+                onClick={resetSettings}
+                className="text-xs px-2 py-1 rounded border border-border hover:bg-surface whitespace-nowrap"
+                title="Reset all sliders, toggles, and controls to their defaults. Your holdings and targets are unchanged."
+              >
+                ↺ Reset settings
+              </button>
+            </div>
           </div>
           {priceMsg && <div className="text-xs text-muted mt-2">{priceMsg}</div>}
         </Card>
         <Card>
-          <div className="text-xs uppercase text-muted">Accounts</div>
-          <div className="text-2xl font-semibold mt-1">{analysis.by_account.length}</div>
-          <div className="text-xs text-muted mt-1">
-            {[...new Set(analysis.by_account.map((a) => ACCOUNT_TYPE_LABELS[a.account_type]))].join(", ")}
+          <div className="flex items-start justify-between mb-2">
+            <div>
+              <div className="text-xs uppercase text-muted">Accounts</div>
+              <div className="text-2xl font-semibold mt-1">{analysis.by_account.length}</div>
+            </div>
+            <label className="text-xs px-2 py-1 rounded border border-border hover:bg-surface cursor-pointer whitespace-nowrap">
+              + Add account
+              <input
+                type="file"
+                accept=".csv"
+                multiple
+                className="hidden"
+                onChange={(e) => e.target.files && parseFiles(e.target.files)}
+              />
+            </label>
           </div>
+          {accounts.length > 0 ? (
+            <div className="space-y-1 mt-1">
+              {accounts.map((a, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className="flex-1 truncate font-medium">{a.accountName}</span>
+                  <span className="text-muted">{ACCOUNT_TYPE_LABELS[a.accountType]}</span>
+                  <span className="text-muted">{a.positionCount}pos</span>
+                  <button
+                    onClick={() => removeAccount(i)}
+                    className="text-bad hover:text-bad/80 px-0.5"
+                    title={`Remove ${a.accountName}`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-muted mt-1">
+              {[...new Set(analysis.by_account.map((a) => ACCOUNT_TYPE_LABELS[a.account_type]))].join(", ")}
+            </div>
+          )}
+          {parseErrors.length > 0 && (
+            <ul className="mt-2 text-xs text-bad list-disc pl-4">
+              {parseErrors.map((e, i) => <li key={i}>{e}</li>)}
+            </ul>
+          )}
         </Card>
         <Card>
           <GradeCard grade={analysis.grade} />
