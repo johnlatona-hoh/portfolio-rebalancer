@@ -100,6 +100,16 @@ export interface PortfolioRisk {
   by_holding: HoldingRisk[];
 }
 
+export interface HarvestLot {
+  ticker: string;
+  account_name: string;
+  asset_class: string | null;
+  current_value: number;
+  cost_basis: number;
+  unrealized_loss: number; // negative
+  loss_pct: number;        // negative %
+}
+
 export interface AnalyzeResponse {
   total_value: number;
   blended: ClassAllocation[];
@@ -110,6 +120,7 @@ export interface AnalyzeResponse {
   max_drift_pct: number;   // largest post-plan deviation from any target (pct pts)
   unknown_tickers: string[];
   risk: PortfolioRisk | null;
+  tax_loss_harvest: HarvestLot[];  // taxable lots at an unrealized loss
 }
 
 export interface ProjectionPoint {

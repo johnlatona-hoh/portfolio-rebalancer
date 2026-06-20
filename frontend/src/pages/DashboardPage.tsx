@@ -24,6 +24,7 @@ import GradeCard from "../components/GradeCard";
 import StrategySlider from "../components/StrategySlider";
 import InflationControls from "../components/InflationControls";
 import TipsBox from "../components/TipsBox";
+import TaxLossPanel from "../components/TaxLossPanel";
 import RiskPanel from "../components/RiskPanel";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -340,6 +341,9 @@ export default function DashboardPage() {
           </ul>
         )}
       </Card>
+
+      {/* ---- tax-loss harvesting (renders only when there are candidates) ---- */}
+      <TaxLossPanel lots={analysis.tax_loss_harvest} />
 
       {/* ---- tips ---- */}
       <Card>

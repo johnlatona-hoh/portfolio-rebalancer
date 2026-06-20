@@ -105,6 +105,16 @@ class PortfolioRisk(BaseModel):
     by_holding: list[HoldingRisk]        # sorted by value desc
 
 
+class HarvestLot(BaseModel):
+    ticker: str
+    account_name: str
+    asset_class: str | None = None
+    current_value: float
+    cost_basis: float
+    unrealized_loss: float   # negative (current_value - cost_basis)
+    loss_pct: float          # negative %, loss relative to cost basis
+
+
 class AnalyzeResponse(BaseModel):
     total_value: float
     blended: list[ClassAllocation]
@@ -115,6 +125,7 @@ class AnalyzeResponse(BaseModel):
     max_drift_pct: float = 0.0        # largest post-plan deviation from any target (pct pts)
     unknown_tickers: list[str]  # tickers with no tag - caller should classify
     risk: PortfolioRisk | None = None
+    tax_loss_harvest: list[HarvestLot] = []  # taxable lots at an unrealized loss
 
 
 # ---------- Projection ----------

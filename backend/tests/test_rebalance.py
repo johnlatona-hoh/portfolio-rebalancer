@@ -261,3 +261,49 @@ def test_gain_aversion_reports_realized_gains_and_est_gain():
         t = tax_sells[0]
         assert "est_gain" in t and abs(t["est_gain"] - t["amount"] * 0.5) < 1
     assert "realized_gains" in result
+
+
+# ---------- tax-loss harvesting ----------
+
+def _lot(account_name, account_type, ticker, cost_basis, current_value):
+    return {
+        "account_name": account_name,
+        "account_type": account_type,
+        "ticker": ticker,
+        "quantity": 1.0,
+        "cost_basis": cost_basis,
+        "current_value": current_value,
+    }
+
+
+def test_tax_loss_harvest_flags_taxable_loss():
+    holdings = [_lot("Brokerage", "taxable", "VTI", 10000, 8000)]
+    result = rebalance.analyze(holdings, {"US Stock": 100}, _tags())
+    tlh = result["tax_loss_harvest"]
+    assert len(tlh) == 1
+    lot = tlh[0]
+    assert lot["ticker"] == "VTI"
+    assert lot["unrealized_loss"] == -2000
+    assert lot["loss_pct"] == -20.0
+
+
+def test_tax_loss_harvest_excludes_tax_advantaged_and_gains_and_zero_basis():
+    holdings = [
+        _lot("401k", "tax_deferred", "VTI", 10000, 8000),   # loss but not taxable
+        _lot("Roth", "tax_free", "VXUS", 5000, 3000),       # loss but not taxable
+        _lot("Brokerage", "taxable", "BND", 5000, 6000),    # taxable gain
+        _lot("Brokerage", "taxable", "VNQ", 0, 4000),       # zero/unknown basis
+    ]
+    targets = {"US Stock": 40, "International": 20, "Taxable Bond": 20, "REITs": 20}
+    result = rebalance.analyze(holdings, targets, _tags())
+    assert result["tax_loss_harvest"] == []
+
+
+def test_tax_loss_harvest_sorted_biggest_loss_first():
+    holdings = [
+        _lot("Brokerage", "taxable", "VTI", 10000, 9000),   # -1000
+        _lot("Brokerage", "taxable", "VXUS", 10000, 6000),  # -4000
+    ]
+    result = rebalance.analyze(holdings, {"US Stock": 50, "International": 50}, _tags())
+    losses = [l["unrealized_loss"] for l in result["tax_loss_harvest"]]
+    assert losses == [-4000, -1000]

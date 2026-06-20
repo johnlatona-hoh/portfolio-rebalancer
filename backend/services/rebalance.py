@@ -497,6 +497,32 @@ def compute_risk_metrics(holdings: list, by_account_data: list, tags: dict, tota
     }
 
 
+def _tax_loss_harvest(holdings, tags):
+    """Lots in TAXABLE accounts sitting at an unrealized loss - candidates for harvesting.
+    Skips zero/unknown cost basis (a 0 basis is 'unknown', not a 100% loss). Losses in
+    tax-advantaged accounts are excluded (they cannot be harvested). Sorted biggest loss first."""
+    lots = []
+    for h in holdings:
+        if h.get("account_type") != "taxable":
+            continue
+        cost = h.get("cost_basis") or 0.0
+        cur = h.get("current_value") or 0.0
+        if cost <= 0 or cur >= cost:
+            continue
+        loss = cur - cost
+        lots.append({
+            "ticker": h["ticker"],
+            "account_name": h["account_name"],
+            "asset_class": _class_of(h["ticker"], tags),
+            "current_value": round(cur, 2),
+            "cost_basis": round(cost, 2),
+            "unrealized_loss": round(loss, 2),
+            "loss_pct": round(loss / cost * 100, 2),
+        })
+    lots.sort(key=lambda x: x["unrealized_loss"])
+    return lots
+
+
 def analyze(holdings, targets, tags, gain_aversion: float = 0.0):
     """Top-level orchestration used by the /analyze router. `gain_aversion` (0..1)
     slides between best-allocation (0) and zero-realized-gains (1) in taxable accounts."""
@@ -544,4 +570,5 @@ def analyze(holdings, targets, tags, gain_aversion: float = 0.0):
         "max_drift_pct": round(max_drift, 2),
         "unknown_tickers": unknown,
         "risk": compute_risk_metrics(holdings, by_account_data, tags, total),
+        "tax_loss_harvest": _tax_loss_harvest(holdings, tags),
     }
