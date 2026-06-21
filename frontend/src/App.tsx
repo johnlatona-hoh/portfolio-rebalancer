@@ -6,6 +6,7 @@ import DashboardPage from "./pages/DashboardPage";
 import SnapshotPage from "./pages/SnapshotPage";
 import HistoryPage from "./pages/HistoryPage";
 import WarmupBanner from "./components/WarmupBanner";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 function Navbar() {
   const nav = useNavigate();
@@ -60,12 +61,14 @@ export default function App() {
           <WarmupBanner />
           <Navbar />
           <main className="max-w-screen-xl mx-auto px-4 py-6">
-            <Routes>
-              <Route path="/" element={<SetupPage />} />
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/snapshots" element={<SnapshotPage />} />
-              <Route path="/history" element={<HistoryPage />} />
-            </Routes>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<SetupPage />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/snapshots" element={<SnapshotPage />} />
+                <Route path="/history" element={<HistoryPage />} />
+              </Routes>
+            </ErrorBoundary>
           </main>
         </div>
       </PortfolioProvider>

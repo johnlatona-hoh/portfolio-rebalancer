@@ -623,26 +623,16 @@ def analyze(holdings, targets, tags, gain_aversion: float = 0.0, drift_band_pct:
 _EQUITY_CLASSES = {"US Stock", "International"}
 
 
-def interpolate_glide_path(
-    current_age: int,
-    retirement_age: int,
-    equity_pct_now: float,
-    equity_pct_retirement: float,
-    base_targets: dict,
-) -> dict:
-    """Scale US Stock + International targets to match the user-specified equity% for
-    today; all other classes scale proportionally to fill (100 - equity_pct_now)%.
+def interpolate_glide_path(equity_pct_now: float, base_targets: dict) -> dict:
+    """Scale US Stock + International targets to match the user-specified equity%; all other
+    classes scale proportionally to fill (100 - equity_pct_now)%.
 
     The analyze() endpoint applies this BEFORE the rebalancing engine so the trade plan
-    reflects the age-adjusted targets rather than the raw targets the user entered.
+    reflects the equity-override targets rather than the raw targets the user entered.
 
     Args:
-        current_age:         user's current age (years)
-        retirement_age:      target retirement age (years)
-        equity_pct_now:      desired equity % at current_age (0-100)
-        equity_pct_retirement: desired equity % at retirement_age (not used here;
-                               stored for informational display on the frontend)
-        base_targets:        dict {asset_class: target_pct} (need not sum to 100)
+        equity_pct_now: desired equity % (US Stock + International), 0-100
+        base_targets:   dict {asset_class: target_pct} (need not sum to 100)
 
     Returns a new dict with the same keys, rescaled so equity classes sum to equity_pct_now
     and non-equity classes fill the remainder.

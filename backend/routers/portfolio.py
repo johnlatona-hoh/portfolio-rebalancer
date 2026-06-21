@@ -17,14 +17,8 @@ async def analyze(req: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
     tags = await load_tags(db)
     holdings = [h.model_dump() for h in req.holdings]
 
-    if req.glide_path and req.current_age is not None and req.equity_pct_now is not None:
-        targets = rebalance.interpolate_glide_path(
-            req.current_age,
-            req.retirement_age if req.retirement_age is not None else req.current_age + 30,
-            req.equity_pct_now,
-            req.equity_pct_retirement if req.equity_pct_retirement is not None else req.equity_pct_now,
-            req.targets,
-        )
+    if req.glide_path and req.equity_pct_now is not None:
+        targets = rebalance.interpolate_glide_path(req.equity_pct_now, req.targets)
     else:
         targets = req.targets
 

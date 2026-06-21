@@ -26,13 +26,10 @@ class AnalyzeRequest(BaseModel):
     gain_aversion: float = 0.0
     # rebalance band: classes within +/- this many pct points of target are left alone.
     drift_band_pct: float = 0.0
-    # glide-path: when True the engine adjusts equity targets to equity_pct_now before
-    # rebalancing. US Stock + International are scaled proportionally to hit that total.
+    # equity override: when True the engine scales equity targets (US Stock + International)
+    # to equity_pct_now before rebalancing; other classes fill the remainder proportionally.
     glide_path: bool = False
-    current_age: int | None = None
-    retirement_age: int | None = None
-    equity_pct_now: float | None = None       # desired equity% at current_age (0-100)
-    equity_pct_retirement: float | None = None  # desired equity% at retirement_age (informational)
+    equity_pct_now: float | None = None       # desired equity% (0-100)
 
 
 # ---------- Allocation + trades output ----------

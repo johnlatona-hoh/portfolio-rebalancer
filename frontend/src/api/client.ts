@@ -127,10 +127,7 @@ export interface AnalyzeResponse {
 
 export interface GlidePathParams {
   enabled: boolean;
-  currentAge: number;
-  retirementAge: number;
-  equityPctNow: number;
-  equityPctRetirement: number;
+  equityPctNow: number; // desired equity % (US Stock + International); other classes fill the rest
 }
 
 export interface ProjectionPoint {
@@ -223,10 +220,7 @@ export async function analyzePortfolio(
     ...(glidePath?.enabled
       ? {
           glide_path: true,
-          current_age: glidePath.currentAge,
-          retirement_age: glidePath.retirementAge,
           equity_pct_now: glidePath.equityPctNow,
-          equity_pct_retirement: glidePath.equityPctRetirement,
         }
       : {}),
   });

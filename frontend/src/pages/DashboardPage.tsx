@@ -454,10 +454,8 @@ export default function DashboardPage() {
           <h3 className="font-semibold mb-3">Current vs Target (Blended)</h3>
           {analysis.effective_targets && glidePathParams.enabled && (
             <p className="text-xs text-muted mb-2 p-2 rounded bg-surface border border-border">
-              Glide-path active: targets adjusted to{" "}
-              <strong className="text-foreground">{glidePathParams.equityPctNow}% equity</strong> now
-              {" → "}
-              {glidePathParams.equityPctRetirement}% at age {glidePathParams.retirementAge}.
+              Equity override active: targets adjusted to{" "}
+              <strong className="text-foreground">{glidePathParams.equityPctNow}% equity</strong>.
             </p>
           )}
           <AllocationBars
