@@ -1,0 +1,15 @@
+name: Keepalive
+
+# Ping the Render free-tier backend every 14 minutes so it doesn't spin down
+# (a cold start makes the first AI/projection request slow or briefly 502).
+on:
+  schedule:
+    - cron: '*/14 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render backend
+        run: curl -sf https://portfolio-rebalancer-tc4h.onrender.com/health

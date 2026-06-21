@@ -28,11 +28,6 @@ const BLANK: Holding = {
   current_value: 0,
 };
 
-function derivedValue(h: Holding): number {
-  // If shares and price are both set, derive value; otherwise use current_value.
-  return h.quantity > 0 && h.current_value > 0 ? h.current_value : h.current_value;
-}
-
 /** Manual what-if: edit holdings, compare resulting allocation + projection. */
 export default function ScenarioPanel({ baseHoldings, targets, horizonMonths, current }: Props) {
   const [holdings, setHoldings] = useState<Holding[]>(() =>

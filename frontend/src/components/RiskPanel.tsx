@@ -42,13 +42,14 @@ function MetricChip({ label, value, subtitle, color, help }: Chip) {
     <div className="group relative flex flex-col gap-0.5 min-w-[120px] border border-border rounded-lg p-3">
       <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted">
         {label}
-        <span
-          tabIndex={0}
+        <button
+          type="button"
           aria-label={help}
+          onClick={(e) => e.preventDefault()}
           className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-border text-[9px] leading-none text-muted cursor-help focus:outline-none focus:ring-1 focus:ring-accent"
         >
           ?
-        </span>
+        </button>
       </span>
       <span className="text-xl font-semibold" style={{ color }}>{value}</span>
       <span className="text-[11px] text-muted">{subtitle}</span>

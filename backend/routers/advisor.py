@@ -17,6 +17,15 @@ router = APIRouter(prefix="/advisor", tags=["advisor"])
 _TTL = timedelta(days=7)
 
 
+def _friendly_ai_error(e: AIError) -> str:
+    """Concise, non-leaky message for the client. The full exception is already logged
+    server-side (services.ai logs via logger.exception); don't echo raw SDK text here."""
+    msg = str(e)
+    if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
+        return "AI is rate-limited right now - try again in a moment."
+    return "AI request failed - please try again."
+
+
 async def _cached(db: AsyncSession, kind: str, summary: dict,
                   generator: Callable[[dict], Awaitable]):
     """Return a cached generator result for this (kind, summary) if present and fresh;
@@ -46,7 +55,7 @@ async def insights(req: AdvisorRequest, db: AsyncSession = Depends(get_db)):
     try:
         result = await _cached(db, "insights", req.summary, ai_svc.portfolio_insights)
     except AIError as e:
-        raise HTTPException(status_code=502, detail=f"AI insights failed: {e}")
+        raise HTTPException(status_code=502, detail=_friendly_ai_error(e))
     return AdvisorResponse(insights=result or [])
 
 
@@ -58,6 +67,6 @@ async def tips(req: BergerTipsRequest, db: AsyncSession = Depends(get_db)):
     try:
         result = await _cached(db, "tips", req.summary, ai_svc.berger_tips)
     except AIError as e:
-        raise HTTPException(status_code=502, detail=f"AI tips failed: {e}")
+        raise HTTPException(status_code=502, detail=_friendly_ai_error(e))
     tip_objs = [BergerTip(**t) for t in (result or [])]
     return BergerTipsResponse(tips=tip_objs)

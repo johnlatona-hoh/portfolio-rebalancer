@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import NumberField from "./NumberField";
 
 export type Benchmark = Record<string, number> | null;
 
@@ -74,19 +75,19 @@ export default function BenchmarkControl({ onChange }: Props) {
           className="flex items-center gap-1"
           title="Stock is split 60/40 US/International; bond maps to Taxable Bond."
         >
-          <input
-            type="number"
+          <NumberField
             min={0}
+            step={1}
             value={stock}
-            onChange={(e) => setStock(Math.max(0, Number(e.target.value) || 0))}
+            onChange={setStock}
             className="w-14 bg-surface border border-border rounded px-2 py-1 text-fg"
           />
           <span>% stock /</span>
-          <input
-            type="number"
+          <NumberField
             min={0}
+            step={1}
             value={bond}
-            onChange={(e) => setBond(Math.max(0, Number(e.target.value) || 0))}
+            onChange={setBond}
             className="w-14 bg-surface border border-border rounded px-2 py-1 text-fg"
           />
           <span>% bond</span>
