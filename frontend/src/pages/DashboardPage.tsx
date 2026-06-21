@@ -33,6 +33,7 @@ import DriftBandControl from "../components/DriftBandControl";
 import GlidePathControl, { GLIDE_PATH_DEFAULT } from "../components/GlidePathControl";
 import type { GlidePathParams } from "../api/client";
 import RiskPanel from "../components/RiskPanel";
+import TiltPanel from "../components/TiltPanel";
 import AdvisorAskBox from "../components/AdvisorAskBox";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -561,6 +562,14 @@ export default function DashboardPage() {
         <Card>
           <h3 className="font-semibold mb-4">Risk / Reward Analysis</h3>
           <RiskPanel risk={analysis.risk} />
+        </Card>
+      )}
+
+      {/* ---- portfolio tilts ---- */}
+      {analysis.tilts && analysis.tilts.dimensions.length > 0 && (
+        <Card>
+          <h3 className="font-semibold mb-4">Portfolio Tilts</h3>
+          <TiltPanel tilts={analysis.tilts} tagMap={tagMap} onClassified={runAnalysis} />
         </Card>
       )}
 

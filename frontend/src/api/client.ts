@@ -111,6 +111,21 @@ export interface HarvestLot {
   loss_pct: number;        // negative %
 }
 
+export interface TiltDimension {
+  key: string;            // macro | us_intl | dev_em | style | size | sector
+  label: string;
+  breakdown: Record<string, number>;  // {bucket: pct}
+  baseline: Record<string, number>;   // neutral reference (may be empty)
+  verdict: string;        // Neutral | Modest tilt | Strong tilt | Aggressive | ...
+  note: string;
+  coverage_pct: number;   // share of the relevant sleeve that could be classified
+}
+
+export interface PortfolioTilts {
+  dimensions: TiltDimension[];
+  unclassified_tickers: string[];  // equity tickers missing style/size/sector
+}
+
 export interface AnalyzeResponse {
   total_value: number;
   blended: ClassAllocation[];
@@ -123,6 +138,7 @@ export interface AnalyzeResponse {
   risk: PortfolioRisk | null;
   tax_loss_harvest: HarvestLot[];  // taxable lots at an unrealized loss
   effective_targets: Record<string, number> | null;  // interpolated targets (glide-path only)
+  tilts: PortfolioTilts | null;    // style/size/geo/sector tilt analysis
 }
 
 export interface GlidePathParams {
@@ -287,6 +303,14 @@ export async function suggestTag(
 ): Promise<{ ticker: string; suggestion: Omit<TickerTag, "ticker"> | null }> {
   const { data } = await api.post("/tags/suggest", { ticker });
   return data;
+}
+
+export async function classifyTilts(
+  items: { ticker: string; name?: string }[]
+): Promise<string[]> {
+  if (items.length === 0) return [];
+  const { data } = await api.post<{ updated: string[] }>("/tags/classify-tilts", { items });
+  return data.updated;
 }
 
 // ---------- User accounts ----------

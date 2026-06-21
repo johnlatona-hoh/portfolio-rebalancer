@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from database import AsyncSessionLocal, create_tables
 from models import TickerTag
-from seed_data import SEED_TICKERS
+from seed_data import SEED_TICKERS, SEED_TILTS
 
 
 async def seed():
@@ -23,15 +23,19 @@ async def seed():
 
         added = updated = 0
         for ticker, (asset_class, tax_eff, name, expense_ratio) in SEED_TICKERS.items():
+            style, size, sector = SEED_TILTS.get(ticker, (None, None, None))
             row = by_ticker.get(ticker)
             if row:
                 row.asset_class, row.tax_efficiency, row.name = asset_class, tax_eff, name
                 row.expense_ratio = expense_ratio
+                if style:
+                    row.style, row.size, row.sector = style, size, sector
                 updated += 1
             else:
                 db.add(TickerTag(ticker=ticker, asset_class=asset_class,
                                  tax_efficiency=tax_eff, name=name,
-                                 expense_ratio=expense_ratio))
+                                 expense_ratio=expense_ratio,
+                                 style=style, size=size, sector=sector))
                 added += 1
         await db.commit()
         print(f"Seed complete: {added} added, {updated} updated, {len(SEED_TICKERS)} total.")

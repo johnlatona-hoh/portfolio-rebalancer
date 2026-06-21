@@ -122,6 +122,21 @@ class HarvestLot(BaseModel):
     loss_pct: float          # negative %, loss relative to cost basis
 
 
+class TiltDimension(BaseModel):
+    key: str                       # macro | us_intl | dev_em | style | size | sector
+    label: str
+    breakdown: dict[str, float]    # {bucket: pct}
+    baseline: dict[str, float]     # neutral reference {bucket: pct} (may be empty)
+    verdict: str                   # Neutral | Modest tilt | Strong tilt | Aggressive | ...
+    note: str
+    coverage_pct: float            # share of the relevant sleeve that could be classified
+
+
+class PortfolioTilts(BaseModel):
+    dimensions: list[TiltDimension]
+    unclassified_tickers: list[str]  # equity tickers missing style/size/sector (AI candidates)
+
+
 class AnalyzeResponse(BaseModel):
     total_value: float
     blended: list[ClassAllocation]
@@ -134,6 +149,7 @@ class AnalyzeResponse(BaseModel):
     risk: PortfolioRisk | None = None
     tax_loss_harvest: list[HarvestLot] = []  # taxable lots at an unrealized loss
     effective_targets: dict[str, float] | None = None  # interpolated targets when glide_path=True
+    tilts: PortfolioTilts | None = None  # style/size/geo/sector tilt analysis
 
 
 # ---------- Projection ----------
@@ -190,6 +206,19 @@ class AutoTagItem(BaseModel):
 
 class AutoTagRequest(BaseModel):
     items: list[AutoTagItem]
+
+
+class ClassifyTiltItem(BaseModel):
+    ticker: str
+    name: str = ""
+
+
+class ClassifyTiltsRequest(BaseModel):
+    items: list[ClassifyTiltItem]
+
+
+class ClassifyTiltsResponse(BaseModel):
+    updated: list[str]   # tickers whose style/size/sector were filled
 
 
 # ---------- Users ----------

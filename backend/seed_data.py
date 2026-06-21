@@ -91,3 +91,34 @@ SEED_TICKERS: dict[str, tuple[str, str, str, float]] = {
     "SCHP": ("Taxable Bond", "inefficient", "Schwab US TIPS ETF", 0.0003),
     "SCHZ": ("Taxable Bond", "inefficient", "Schwab US Aggregate Bond ETF", 0.0003),
 }
+
+
+# Equity-tilt classification for seeded equity funds: ticker -> (style, size, sector).
+# style in constants.STYLES; size in {large, mid, small, total}; sector in constants.SECTORS.
+# Only equity funds where the tilt is well-defined; everything else is inferred or left blank.
+SEED_TILTS: dict[str, tuple[str, str, str]] = {
+    # US broad / total-market (neutral all-cap blend)
+    "VTI": ("blend", "total", "Broad"), "ITOT": ("blend", "total", "Broad"),
+    "VTSAX": ("blend", "total", "Broad"), "FZROX": ("blend", "total", "Broad"),
+    "FSKAX": ("blend", "total", "Broad"),
+    # US large blend (S&P 500)
+    "VOO": ("blend", "large", "Broad"), "IVV": ("blend", "large", "Broad"),
+    "SPY": ("blend", "large", "Broad"), "SCHX": ("blend", "large", "Broad"),
+    "FNDX": ("value", "large", "Broad"), "PRF": ("value", "large", "Broad"),
+    # US style/size tilts
+    "VUG": ("growth", "large", "Broad"), "SCHG": ("growth", "large", "Broad"),
+    "VTV": ("value", "large", "Broad"),
+    "VB": ("blend", "small", "Broad"), "SCHA": ("blend", "small", "Broad"),
+    "AVUV": ("value", "small", "Broad"), "FNDA": ("value", "small", "Broad"),
+    "PRFZ": ("value", "small", "Broad"),
+    "QQQ": ("growth", "large", "Technology"),
+    # International (size/style; region inferred separately from the name)
+    "VXUS": ("blend", "total", "Broad"), "VEU": ("blend", "total", "Broad"),
+    "IXUS": ("blend", "total", "Broad"), "VTIAX": ("blend", "total", "Broad"),
+    "FTIHX": ("blend", "total", "Broad"), "SCHF": ("blend", "large", "Broad"),
+    "VEA": ("blend", "large", "Broad"), "FNDF": ("value", "large", "Broad"),
+    "VWO": ("blend", "large", "Broad"), "IEMG": ("blend", "large", "Broad"),
+    "SCHE": ("blend", "large", "Broad"), "FNDE": ("value", "large", "Broad"),
+    "SCHC": ("blend", "small", "Broad"), "FNDC": ("value", "small", "Broad"),
+    "AVES": ("value", "large", "Broad"), "EFV": ("value", "large", "Broad"),
+}

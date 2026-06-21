@@ -54,13 +54,17 @@ class TickerTag(Base):
     tax_efficiency: Mapped[str] = mapped_column(String)              # efficient | inefficient | neutral
     name: Mapped[str | None] = mapped_column(String, nullable=True)  # human label, e.g. "Vanguard Total Stock"
     expense_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)  # annual decimal, e.g. 0.0003 = 0.03%; None -> class fallback
+    # Equity-tilt classification (seed or Gemini-filled; None -> inferred from name or "Unclassified").
+    style: Mapped[str | None] = mapped_column(String, nullable=True)   # growth | value | blend
+    size: Mapped[str | None] = mapped_column(String, nullable=True)    # large | mid | small | total
+    sector: Mapped[str | None] = mapped_column(String, nullable=True)  # GICS sector | "Broad"
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
 
 class RebalanceEvent(Base):
-    """A saved rebalance snapshot — recorded explicitly by the user (not auto-generated).
+    """A saved rebalance snapshot - recorded explicitly by the user (not auto-generated).
     Captures the portfolio state + grade at the time of saving for drift tracking."""
 
     __tablename__ = "rebalancer_rebalance_events"

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from schemas import AnalyzeRequest, AnalyzeResponse, ProjectRequest, ProjectResponse
-from services import rebalance, projections
+from services import rebalance, projections, tilts as tilts_svc
 from routers.tags import load_tags
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
@@ -25,6 +25,7 @@ async def analyze(req: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
     result = rebalance.analyze(holdings, targets, tags, gain_aversion=req.gain_aversion,
                                drift_band_pct=req.drift_band_pct)
     result["effective_targets"] = targets if req.glide_path else None
+    result["tilts"] = tilts_svc.compute_tilts(holdings, tags, result["total_value"])
     return result
 
 

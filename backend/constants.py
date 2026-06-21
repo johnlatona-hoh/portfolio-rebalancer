@@ -121,6 +121,47 @@ def get_correlation(a: str, b: str) -> float:
     return CORRELATION.get((a, b), CORRELATION.get((b, a), 0.0))
 
 
+# ---------------------------------------------------------------------------
+# Portfolio "tilts" vocabulary + neutral baselines (used by services/tilts.py)
+# ---------------------------------------------------------------------------
+
+# Canonical classification vocab for equity holdings. None/absent => "Unclassified".
+STYLES = ["growth", "value", "blend"]
+SIZES = ["large", "mid", "small"]
+MKT_REGIONS = ["developed", "emerging"]
+SECTORS = [
+    "Technology", "Health Care", "Financials", "Consumer Discretionary",
+    "Consumer Staples", "Energy", "Industrials", "Materials", "Utilities",
+    "Real Estate", "Communication Services", "Broad",
+]
+
+# Equity sub-classes that make up the "stock sleeve" for style/size/geography tilts.
+EQUITY_CLASSES = ["US Stock", "International"]
+
+# Macro Stock/Bond/Alt buckets (which display PARENT rolls into which macro group).
+MACRO_GROUP = {
+    "US Stock": "Stocks", "International": "Stocks", "REITs": "Stocks",
+    "Bond": "Bonds",
+    "Alternatives": "Alternatives", "Gold & Commodities": "Alternatives",
+    "Crypto": "Alternatives",
+    "Cash": "Cash",
+}
+
+# Neutral baselines a tilt is measured against (approximate, mainstream-cap-weighted).
+TILT_BASELINES = {
+    "us_intl": {"US": 60.0, "International": 40.0},      # of the equity sleeve
+    "dev_em": {"developed": 75.0, "emerging": 25.0},     # of international
+    "size": {"large": 75.0, "mid": 15.0, "small": 10.0}, # of classifiable equity
+    "style": {"growth": 50.0, "value": 50.0},            # blend is neutral; spread = tilt
+}
+
+# Magnitude bands (percentage-point deviation from baseline). <5 none, 5-15 modest, else strong.
+TILT_NEUTRAL_PTS = 5.0
+TILT_MODEST_PTS = 15.0
+# A single sector above this share of the equity sleeve is flagged as concentration.
+SECTOR_CONCENTRATION_PTS = 28.0
+
+
 # Per-asset-class fallback expense ratio (annual decimal) used when a ticker has no
 # explicit expense_ratio on its TickerTag (e.g. an auto-classified unknown fund).
 # Conservative fund-like estimates; individual stocks should be overridden to 0.

@@ -34,6 +34,11 @@ export default function AdvisorAskBox({ analysis, projection, horizon, contribut
       accounts: analysis.by_account.map((a) => ({ type: a.account_type, by_class: a.by_class })),
       grade: analysis.grade,
       risk: analysis.risk,
+      tilts: analysis.tilts?.dimensions.map((d) => ({
+        dimension: d.label,
+        verdict: d.verdict,
+        breakdown: d.breakdown,
+      })),
       projection: tail
         ? {
             horizon_months: horizon,

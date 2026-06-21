@@ -9,7 +9,7 @@ import logging
 import re
 
 from config import settings
-from constants import ASSET_CLASSES, TAX_EFFICIENCIES
+from constants import ASSET_CLASSES, TAX_EFFICIENCIES, STYLES, SIZES, SECTORS
 
 _MODEL = "gemini-2.5-flash"
 
@@ -166,6 +166,57 @@ async def advisor_query(summary: dict, question: str,
         raise
     except Exception as e:
         logger.exception("advisor_query generation failed")
+        raise AIError(f"{type(e).__name__}: {e}") from e
+
+
+async def classify_tilts(items: list[dict]) -> dict | None:
+    """Classify each {ticker, name} into style/size/sector for the tilts module. Returns
+    {ticker: {"style","size","sector"}} for the ones the model recognizes (omits any it
+    marks UNKNOWN). None without a key; raises AIError on a genuine failure."""
+    if not settings.GEMINI_API_KEY or not items:
+        return None
+
+    try:
+        client = _client()
+        listing = "\n".join(f"- {i['ticker']}: {i.get('name') or ''}" for i in items)
+        prompt = (
+            "You classify US-listed equity holdings (funds, ETFs, and individual stocks) by "
+            "investment style, market-cap size, and sector for a portfolio tilt analysis.\n\n"
+            f"For each ticker choose exactly one style from {STYLES}, one size from {SIZES} "
+            "(use 'large' for mega/large-cap and for an individual mega-cap stock), and one "
+            f"sector from {SECTORS} (use 'Broad' for a diversified/total-market fund that is "
+            "not concentrated in one sector).\n"
+            "If a ticker is a bond/cash/commodity fund (not equity) or you do not recognize it, "
+            "use the string \"UNKNOWN\" for that ticker instead of an object.\n\n"
+            f"TICKERS:\n{listing}\n\n"
+            'Respond ONLY with valid JSON: an object keyed by ticker, each value either '
+            '{"style":"...","size":"...","sector":"..."} or "UNKNOWN". No markdown, no preamble.'
+        )
+        response = await _generate_with_retry(client, prompt)
+        text = (response.text or "").strip()
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start < 0 or end <= start:
+            raise AIError("Model response did not contain a JSON object.")
+        raw = json.loads(text[start:end])
+        out: dict[str, dict] = {}
+        for ticker, val in raw.items():
+            if not isinstance(val, dict):
+                continue  # "UNKNOWN" or malformed -> skip
+            entry = {}
+            if val.get("style") in STYLES:
+                entry["style"] = val["style"]
+            if val.get("size") in SIZES:
+                entry["size"] = val["size"]
+            if val.get("sector") in SECTORS:
+                entry["sector"] = val["sector"]
+            if entry:
+                out[ticker.strip().upper()] = entry
+        return out
+    except AIError:
+        raise
+    except Exception as e:
+        logger.exception("classify_tilts generation failed")
         raise AIError(f"{type(e).__name__}: {e}") from e
 
 
