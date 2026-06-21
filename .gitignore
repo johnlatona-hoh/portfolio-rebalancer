@@ -21,3 +21,8 @@ frontend/dist/
 Thumbs.db
 .vscode/
 .idea/
+
+# Generated guide PDFs accidentally swept in by deploy's `git add -A`
+# (the canonical copies live under docs/). Scope to these two files only.
+/Portfolio_Rebalancer_Developer_Guide.pdf
+/Portfolio_Rebalancer_User_Guide.pdf
