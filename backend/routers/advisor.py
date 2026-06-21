@@ -3,13 +3,14 @@ import json
 from datetime import datetime, timedelta
 from typing import Awaitable, Callable
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import AICache
 from schemas import AdvisorRequest, AdvisorResponse, BergerTipsRequest, BergerTipsResponse, BergerTip
 from services import ai as ai_svc
+from services.ai import AIError
 
 router = APIRouter(prefix="/advisor", tags=["advisor"])
 
@@ -40,15 +41,23 @@ async def _cached(db: AsyncSession, kind: str, summary: dict,
 @router.post("/insights", response_model=AdvisorResponse)
 async def insights(req: AdvisorRequest, db: AsyncSession = Depends(get_db)):
     """Generate tax-location insights from an anonymized portfolio summary (cached by
-    portfolio hash). Returns an empty list when GEMINI_API_KEY is unset."""
-    result = await _cached(db, "insights", req.summary, ai_svc.portfolio_insights)
+    portfolio hash). Returns an empty list when GEMINI_API_KEY is unset; raises 502 with
+    a detail message when the AI call genuinely fails (so the UI can show why)."""
+    try:
+        result = await _cached(db, "insights", req.summary, ai_svc.portfolio_insights)
+    except AIError as e:
+        raise HTTPException(status_code=502, detail=f"AI insights failed: {e}")
     return AdvisorResponse(insights=result or [])
 
 
 @router.post("/tips", response_model=BergerTipsResponse)
 async def tips(req: BergerTipsRequest, db: AsyncSession = Depends(get_db)):
     """Generate practical index-investing tips tailored to this portfolio (cached by
-    portfolio hash). Returns an empty list when GEMINI_API_KEY is unset."""
-    result = await _cached(db, "tips", req.summary, ai_svc.berger_tips)
+    portfolio hash). Returns an empty list when GEMINI_API_KEY is unset; raises 502 with
+    a detail message when the AI call genuinely fails (so the UI can show why)."""
+    try:
+        result = await _cached(db, "tips", req.summary, ai_svc.berger_tips)
+    except AIError as e:
+        raise HTTPException(status_code=502, detail=f"AI tips failed: {e}")
     tip_objs = [BergerTip(**t) for t in (result or [])]
     return BergerTipsResponse(tips=tip_objs)

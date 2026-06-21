@@ -34,14 +34,31 @@ interface Chip {
   value: string;
   subtitle: string;
   color: string;
+  help: string;
 }
 
-function MetricChip({ label, value, subtitle, color }: Chip) {
+function MetricChip({ label, value, subtitle, color, help }: Chip) {
   return (
-    <div className="flex flex-col gap-0.5 min-w-[120px] border border-border rounded-lg p-3">
-      <span className="text-[10px] uppercase tracking-wide text-muted">{label}</span>
+    <div className="group relative flex flex-col gap-0.5 min-w-[120px] border border-border rounded-lg p-3">
+      <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted">
+        {label}
+        <span
+          tabIndex={0}
+          aria-label={help}
+          className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-border text-[9px] leading-none text-muted cursor-help focus:outline-none focus:ring-1 focus:ring-accent"
+        >
+          ?
+        </span>
+      </span>
       <span className="text-xl font-semibold" style={{ color }}>{value}</span>
       <span className="text-[11px] text-muted">{subtitle}</span>
+      {/* Hover/focus popover — what the metric means + why it matters */}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-60 rounded-lg border border-border bg-surface p-2.5 text-[11px] font-normal normal-case leading-relaxed text-fg opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        {help}
+      </span>
     </div>
   );
 }
@@ -95,36 +112,42 @@ export default function RiskPanel({ risk }: Props) {
       value: fmt1(risk.expected_return_pct),
       subtitle: "annual estimate",
       color: riskColor(risk.expected_return_pct, 6, 3, true),
+      help: "The average yearly growth your mix of assets has earned historically, weighted by how much you hold of each. Higher is better, but it usually comes with more volatility — it sets your long-run wealth-building pace.",
     },
     {
       label: "Volatility",
       value: fmt1(risk.volatility_pct),
       subtitle: "annual std dev",
       color: riskColor(risk.volatility_pct, 10, 18, false),
+      help: "How much your portfolio's value swings up and down in a typical year (standard deviation). Lower means a smoother ride; high volatility raises the odds you'll sell in a panic at the wrong time.",
     },
     {
       label: "Max Drawdown Est.",
       value: fmt1(risk.max_drawdown_pct),
       subtitle: "rough worst case",
       color: riskColor(Math.abs(risk.max_drawdown_pct), 25, 45, false),
+      help: "A rough estimate of the worst peak-to-trough drop this mix could see in a severe downturn. It's a gut-check: could you stay invested if your balance fell this far without selling?",
     },
     {
       label: "Diversification",
       value: fmt1(risk.diversification_benefit_pct),
       subtitle: "vol saved by mix",
       color: riskColor(risk.diversification_benefit_pct, 10, 5, true),
+      help: "How much volatility you avoid because your assets don't all move together, versus holding them in isolation. Higher means your mix is doing real work to reduce risk for free.",
     },
     {
       label: "Largest Position",
       value: fmt1(risk.largest_position_pct),
       subtitle: "% of portfolio",
       color: riskColor(risk.largest_position_pct, 10, 20, false),
+      help: "The share of your whole portfolio sitting in a single holding. A large number means concentration risk — one bad pick can dominate your results, so lower is generally safer.",
     },
     {
       label: "Annual Fees",
       value: fmtFee(risk.weighted_fee_pct),
       subtitle: fmtMoney(risk.annual_fee_cost) + "/yr",
       color: riskColor(risk.weighted_fee_pct, 0.1, 0.4, false),
+      help: "The blended yearly expense ratio across your funds, in percent and dollars. Fees compound against you every year, so even a few tenths of a percent can cost tens of thousands over decades — lower is better.",
     },
   ];
 

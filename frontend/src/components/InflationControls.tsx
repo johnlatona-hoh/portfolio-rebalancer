@@ -1,3 +1,5 @@
+import NumberField from "./NumberField";
+
 interface Props {
   realDollars: boolean;
   onToggle: (real: boolean) => void;
@@ -35,16 +37,12 @@ export default function InflationControls({
       {realDollars && (
         <label className="flex items-center gap-1.5 text-xs text-muted">
           Inflation
-          <input
-            type="number"
+          <NumberField
             min={0}
             max={20}
             step={0.1}
             value={inflationPct}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              if (!isNaN(v) && v >= 0 && v <= 20) onInflationChange(v);
-            }}
+            onChange={onInflationChange}
             className="w-14 bg-surface border border-border rounded px-1.5 py-0.5 text-right text-fg"
           />
           %/yr

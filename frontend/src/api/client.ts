@@ -245,7 +245,8 @@ export async function projectPortfolio(
 ): Promise<ProjectResponse> {
   const { data } = await api.post<ProjectResponse>("/portfolio/project", {
     value_by_class: valueByClass,
-    horizon_months: horizonMonths,
+    // Backend requires horizon_months in [1, 1200]; clamp so a 0/blank horizon never 422s.
+    horizon_months: Math.min(1200, Math.max(1, Math.round(horizonMonths) || 1)),
     n_paths: 1000,
     assumptions: opts?.assumptions ?? null,
     fee_drag: opts?.feeDrag ?? 0,

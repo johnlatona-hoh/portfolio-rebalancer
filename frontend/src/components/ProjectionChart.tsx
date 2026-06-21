@@ -24,9 +24,8 @@ interface Props {
 
 const MEDIAN_COLOR = "#f5a623";   // bright orange — median (p50)
 const FAN_COLOR = "#6b8cba";      // muted blue — p10-p90 fan
-const DET_COLOR = "#4caf7d";      // green — steady/deterministic return
 
-/** Monte Carlo fan chart: p10–p90 shaded band, distinct amber median, dashed deterministic. */
+/** Monte Carlo fan chart: p10–p90 shaded band, distinct amber median. */
 const BENCH_COLOR = "#b48ead";    // muted purple - benchmark overlay
 
 export default function ProjectionChart({
@@ -43,7 +42,6 @@ export default function ProjectionChart({
     p10: p.p10,
     band: p.p90 - p.p10,
     p50: p.p50,
-    deterministic: p.deterministic,
     bench: benchmarkPoints?.[i]?.p50 ?? null,
   }));
 
@@ -74,7 +72,6 @@ export default function ProjectionChart({
             formatter={(value: number, name: string) => {
               if (name === "band") return [fmtMoney(value), "p10–p90 span"];
               if (name === "p50") return [fmtMoney(value), "Median (p50)"];
-              if (name === "deterministic") return [fmtMoney(value), "Steady-return"];
               return [fmtMoney(value), name];
             }}
             labelFormatter={(v) => `Year ${Number(v).toFixed(1)}`}
@@ -103,15 +100,6 @@ export default function ProjectionChart({
             dataKey="p50"
             stroke={MEDIAN_COLOR}
             strokeWidth={3}
-            dot={false}
-            isAnimationActive={false}
-          />
-
-          {/* Steady/deterministic return — solid green, clearly distinct */}
-          <Line
-            dataKey="deterministic"
-            stroke={DET_COLOR}
-            strokeWidth={2}
             dot={false}
             isAnimationActive={false}
           />
@@ -182,10 +170,6 @@ export default function ProjectionChart({
           />
           Likely range (p10–p90)
         </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-6 h-0.5" style={{ background: DET_COLOR, height: 2 }} />
-          Steady return (no volatility)
-        </span>
         {benchmarkPoints && (
           <span className="flex items-center gap-1">
             <span className="inline-block w-6 h-0.5" style={{ background: BENCH_COLOR, height: 2 }} />
@@ -204,7 +188,7 @@ export default function ProjectionChart({
           <span className="text-fg" style={{ color: MEDIAN_COLOR }}>
             {fmtCompact(lastPoint.p50)}
           </span>
-          . The dashed line is steady-return growth with no year-to-year volatility.
+          .
           {realDollars && " Values are shown in today's purchasing power."}
           {netOfFees && " Returns are shown net of fund expense ratios."}
           {monthlyContribution > 0 &&

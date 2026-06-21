@@ -1,4 +1,5 @@
 import type { GlidePathParams } from "../api/client";
+import NumberField from "./NumberField";
 
 interface Props {
   value: GlidePathParams;
@@ -31,15 +32,12 @@ function NumInput({
   return (
     <label className="flex flex-col gap-1 text-xs text-muted">
       {label}
-      <input
-        type="number"
+      <NumberField
         value={value}
         min={min}
         max={max}
-        onChange={(e) => {
-          const v = parseInt(e.target.value, 10);
-          if (!isNaN(v) && v >= min && v <= max) onChange(v);
-        }}
+        step={1}
+        onChange={onChange}
         className="w-20 px-2 py-1 rounded border border-border bg-background text-sm text-foreground"
       />
     </label>

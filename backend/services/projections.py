@@ -6,6 +6,7 @@ The model treats each asset class as a lognormal monthly return drawn from its
 annualized mean/stdev, summing the classes each month across all simulated paths.
 """
 
+import math
 import random
 
 from constants import RETURN_ASSUMPTIONS
@@ -45,7 +46,13 @@ def project(value_by_class, horizon_months, n_paths=1000, assumptions=None,
     rng = random.Random(seed)
     assumptions = {**RETURN_ASSUMPTIONS, **(assumptions or {})}
 
-    classes = [(c, v) for c, v in value_by_class.items() if v]
+    # Sanitize: drop non-finite / non-positive values so a stray NaN or empty input yields a
+    # valid (zero) series instead of propagating NaN through every percentile.
+    value_by_class = {
+        c: v for c, v in value_by_class.items()
+        if isinstance(v, (int, float)) and math.isfinite(v) and v > 0
+    }
+    classes = list(value_by_class.items())
     starting_value = sum(value_by_class.values())
 
     # Precompute monthly mean/stdev per class, with the annual fee subtracted from the mean.

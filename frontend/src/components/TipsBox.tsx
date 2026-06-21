@@ -85,6 +85,7 @@ interface Props {
 export default function TipsBox({ analysis }: Props) {
   const [aiTips, setAiTips] = useState<BergerTip[] | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
+  const [aiErr, setAiErr] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
   const ctx = contextTips(analysis);
@@ -92,6 +93,7 @@ export default function TipsBox({ analysis }: Props) {
 
   async function loadAiTips() {
     setLoadingAi(true);
+    setAiErr(null);
     try {
       const summary = {
         total_value: analysis.total_value,
@@ -105,6 +107,9 @@ export default function TipsBox({ analysis }: Props) {
       };
       const tips = await getBergerTips(summary);
       setAiTips(tips);
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      setAiErr(err?.response?.data?.detail ?? err?.message ?? "Couldn't load AI tips.");
     } finally {
       setLoadingAi(false);
     }
@@ -161,13 +166,14 @@ export default function TipsBox({ analysis }: Props) {
           </button>
         </div>
 
-        {aiTips === null && (
+        {aiErr && <p className="text-xs text-bad">{aiErr}</p>}
+        {!aiErr && aiTips === null && (
           <p className="text-xs text-muted">
             Get 3–4 portfolio-specific tips written in Rob Berger's plain-English style,
             powered by Gemini AI.
           </p>
         )}
-        {aiTips !== null && aiTips.length === 0 && (
+        {!aiErr && aiTips !== null && aiTips.length === 0 && (
           <p className="text-xs text-muted">
             AI tips unavailable (no Gemini API key configured on the server).
           </p>

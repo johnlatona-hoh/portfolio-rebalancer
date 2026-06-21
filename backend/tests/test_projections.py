@@ -10,6 +10,18 @@ def test_deterministic_fv_compounds_annually():
     assert math.isclose(fv, 1000.0 * (1.07 ** 10), rel_tol=1e-9)
 
 
+def test_empty_or_degenerate_input_returns_zero_series():
+    # Empty input, and inputs with non-finite / non-positive values, must not throw - they
+    # should produce a valid all-zero series so the chart and scenario can't 500/blank.
+    for vbc in ({}, {"Cash": 0.0}, {"US Stock": float("nan")}, {"Cash": -100.0}):
+        result = projections.project(vbc, horizon_months=6, n_paths=50, seed=3)
+        assert len(result["points"]) == 7
+        assert result["starting_value"] == 0.0
+        last = result["points"][-1]
+        assert last["p10"] == 0.0 and last["p50"] == 0.0 and last["p90"] == 0.0
+        assert last["deterministic"] == 0.0
+
+
 def test_monte_carlo_returns_point_per_month_plus_start():
     result = projections.project(
         {"US Stock": 1000.0},

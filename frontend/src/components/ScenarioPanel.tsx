@@ -48,12 +48,13 @@ export default function ScenarioPanel({ baseHoldings, targets, horizonMonths, cu
 
   // When shares change, auto-derive value from shares × (price = value/quantity before edit)
   const editShares = (i: number, qty: number) => {
+    const q = Number.isFinite(qty) ? qty : 0;
     setHoldings((hs) =>
       hs.map((h, j) => {
         if (j !== i) return h;
         const price = h.quantity > 0 ? h.current_value / h.quantity : 0;
-        const value = price > 0 ? qty * price : h.current_value;
-        return { ...h, quantity: qty, current_value: value };
+        const value = price > 0 ? q * price : h.current_value;
+        return { ...h, quantity: q, current_value: value };
       })
     );
   };
@@ -65,10 +66,25 @@ export default function ScenarioPanel({ baseHoldings, targets, horizonMonths, cu
     setBusy(true);
     setErr(null);
     try {
-      const clean = holdings.filter((h) => h.ticker.trim() && h.current_value > 0);
+      // Only send rows with a ticker and a finite, positive value (guards NaN/blank edits).
+      const clean = holdings.filter(
+        (h) => h.ticker.trim() && Number.isFinite(h.current_value) && h.current_value > 0
+      );
+      if (clean.length === 0) {
+        setErr("Add at least one holding with a ticker and a positive value.");
+        return;
+      }
       const res = await analyzePortfolio(clean, targets);
       setResult(res);
-      const valueByClass = Object.fromEntries(res.blended.map((b) => [b.asset_class, b.value]));
+      const valueByClass = Object.fromEntries(
+        res.blended
+          .filter((b) => Number.isFinite(b.value) && b.value > 0)
+          .map((b) => [b.asset_class, b.value])
+      );
+      if (Object.keys(valueByClass).length === 0) {
+        setErr("None of these holdings map to a known asset class — check the tickers.");
+        return;
+      }
       setProjection(await projectPortfolio(valueByClass, horizonMonths));
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } };
@@ -197,7 +213,7 @@ export default function ScenarioPanel({ baseHoldings, targets, horizonMonths, cu
                               type="number"
                               min={0}
                               value={h.current_value ? Math.round(h.current_value) : ""}
-                              onChange={(e) => editField(i, { current_value: Math.round(Number(e.target.value)) })}
+                              onChange={(e) => editField(i, { current_value: Math.round(Number(e.target.value) || 0) })}
                               className="w-20 bg-surface border border-border rounded px-1 py-0.5 text-right"
                             />
                           </span>

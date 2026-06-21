@@ -48,6 +48,8 @@ export default function DashboardPage() {
 
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [projection, setProjection] = useState<ProjectResponse | null>(null);
+  const [projecting, setProjecting] = useState(false);
+  const [projError, setProjError] = useState<string | null>(null);
 
   // Horizon: pendingHorizon updates live (label shows immediately); horizon commits
   // only after 2 s of no change (debounced) to avoid hammering the projection API.
@@ -85,6 +87,7 @@ export default function DashboardPage() {
   // AI insights
   const [insights, setInsights] = useState<string[] | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
+  const [insightsErr, setInsightsErr] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -163,15 +166,33 @@ export default function DashboardPage() {
   const feeDrag = netOfFees && analysis?.risk ? analysis.risk.weighted_fee_pct / 100 : 0;
 
   // Re-project when committed horizon/contribution, fee toggle, benchmark, or analysis changes.
+  // Errors are surfaced (not swallowed) and the previous chart is kept on failure so a transient
+  // backend error or cold start doesn't blank the panel into a permanent "Projecting…".
   useEffect(() => {
     if (!analysis) return;
+    let cancelled = false;
+    setProjecting(true);
     projectPortfolio(valueByClass, horizon, {
       feeDrag,
       monthlyContribution: contribution,
       benchmark: benchmark ?? undefined,
     })
-      .then(setProjection)
-      .catch(() => setProjection(null));
+      .then((data) => {
+        if (cancelled) return;
+        setProjection(data);
+        setProjError(null);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        const err = e as { response?: { data?: { detail?: string } }; message?: string };
+        setProjError(err?.response?.data?.detail ?? err?.message ?? "Projection failed.");
+      })
+      .finally(() => {
+        if (!cancelled) setProjecting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [analysis, horizon, valueByClass, feeDrag, contribution, benchmark]);
 
   // Deflate projection client-side for real-dollars view.
@@ -280,6 +301,7 @@ export default function DashboardPage() {
     setPendingContribution(0);
     setBenchmark(null);
     setInsights(null);
+    setInsightsErr(null);
     setGlidePathParams(GLIDE_PATH_DEFAULT);
     glidePathRef.current = GLIDE_PATH_DEFAULT;
     clearPriceOverride();
@@ -291,6 +313,7 @@ export default function DashboardPage() {
   async function loadInsights() {
     if (!analysis) return;
     setLoadingInsights(true);
+    setInsightsErr(null);
     try {
       const summary = {
         total_value: analysis.total_value,
@@ -299,6 +322,9 @@ export default function DashboardPage() {
         grade: analysis.grade,
       };
       setInsights(await getInsights(summary));
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      setInsightsErr(err?.response?.data?.detail ?? err?.message ?? "Couldn't load insights.");
     } finally {
       setLoadingInsights(false);
     }
@@ -486,13 +512,23 @@ export default function DashboardPage() {
             <BenchmarkControl value={benchmark} onChange={setBenchmark} />
           </div>
           {displayedPoints ? (
-            <ProjectionChart
-              points={displayedPoints}
-              realDollars={realDollars}
-              netOfFees={netOfFees}
-              monthlyContribution={contribution}
-              benchmarkPoints={displayedBenchmark}
-            />
+            <div className="relative">
+              <ProjectionChart
+                points={displayedPoints}
+                realDollars={realDollars}
+                netOfFees={netOfFees}
+                monthlyContribution={contribution}
+                benchmarkPoints={displayedBenchmark}
+              />
+              {projecting && (
+                <span className="absolute right-0 top-0 text-xs text-muted">updating…</span>
+              )}
+              {projError && (
+                <p className="mt-1 text-xs text-bad">Couldn't refresh projection: {projError}</p>
+              )}
+            </div>
+          ) : projError ? (
+            <p className="text-sm text-bad">Projection failed: {projError}</p>
           ) : (
             <p className="text-muted text-sm">Projecting…</p>
           )}
@@ -545,7 +581,9 @@ export default function DashboardPage() {
             {loadingInsights ? "Thinking…" : insights ? "Refresh" : "Get insights"}
           </button>
         </div>
-        {insights === null ? (
+        {insightsErr ? (
+          <p className="text-sm text-bad">{insightsErr}</p>
+        ) : insights === null ? (
           <p className="text-sm text-muted">
             Get tax-location suggestions based on your current allocation.
           </p>

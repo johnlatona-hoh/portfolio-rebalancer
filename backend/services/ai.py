@@ -5,12 +5,21 @@ the discipline of no-op'ing (returning None) when GEMINI_API_KEY is absent.
 
 import asyncio
 import json
+import logging
 import re
 
 from config import settings
 from constants import ASSET_CLASSES, TAX_EFFICIENCIES
 
 _MODEL = "gemini-2.5-flash"
+
+logger = logging.getLogger(__name__)
+
+
+class AIError(RuntimeError):
+    """Raised when an AI generation genuinely fails (key present but the call errored,
+    rate-limited, or returned an unparseable response). Distinct from the no-key no-op,
+    which returns None. Lets the router surface a real error instead of a silent empty."""
 
 
 def _client():
@@ -65,9 +74,12 @@ async def portfolio_insights(summary: dict) -> list[str] | None:
         if start >= 0 and end > start:
             insights = json.loads(text[start:end])
             return [str(i).strip() for i in insights if str(i).strip()]
-    except Exception:
-        pass
-    return None
+        raise AIError("Model response did not contain a JSON array.")
+    except AIError:
+        raise
+    except Exception as e:
+        logger.exception("portfolio_insights generation failed")
+        raise AIError(f"{type(e).__name__}: {e}") from e
 
 
 async def berger_tips(summary: dict) -> list[dict] | None:
@@ -100,9 +112,12 @@ async def berger_tips(summary: dict) -> list[dict] | None:
         if start >= 0 and end > start:
             tips = json.loads(text[start:end])
             return [t for t in tips if isinstance(t, dict) and "title" in t and "body" in t]
-    except Exception:
-        pass
-    return None
+        raise AIError("Model response did not contain a JSON array.")
+    except AIError:
+        raise
+    except Exception as e:
+        logger.exception("berger_tips generation failed")
+        raise AIError(f"{type(e).__name__}: {e}") from e
 
 
 async def suggest_ticker_tag(ticker: str) -> dict | None:

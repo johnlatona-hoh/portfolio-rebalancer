@@ -1,3 +1,5 @@
+import NumberField from "./NumberField";
+
 interface Props {
   months: number;
   onChange: (months: number) => void;
@@ -21,21 +23,21 @@ export default function HorizonControl({ months, onChange }: Props) {
         className="w-40 accent-accent"
       />
       <div className="flex items-center gap-1">
-        <input
-          type="number"
+        <NumberField
           min={0}
           max={40}
+          step={1}
           value={years}
-          onChange={(e) => onChange(Number(e.target.value) * 12 + rem)}
+          onChange={(y) => onChange(Math.max(1, y * 12 + rem))}
           className="w-14 bg-surface border border-border rounded px-2 py-1"
         />
         <span className="text-muted">yr</span>
-        <input
-          type="number"
+        <NumberField
           min={0}
           max={11}
+          step={1}
           value={rem}
-          onChange={(e) => onChange(years * 12 + Number(e.target.value))}
+          onChange={(m) => onChange(Math.max(1, years * 12 + m))}
           className="w-14 bg-surface border border-border rounded px-2 py-1"
         />
         <span className="text-muted">mo</span>
