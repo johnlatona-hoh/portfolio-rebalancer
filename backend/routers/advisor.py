@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import AICache
-from schemas import AdvisorRequest, AdvisorResponse, BergerTipsRequest, BergerTipsResponse, BergerTip
+from schemas import (
+    AdvisorRequest, AdvisorResponse, BergerTipsRequest, BergerTipsResponse, BergerTip,
+    AdvisorQueryRequest, AdvisorQueryResponse,
+)
 from services import ai as ai_svc
 from services.ai import AIError
 
@@ -70,3 +73,16 @@ async def tips(req: BergerTipsRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=502, detail=_friendly_ai_error(e))
     tip_objs = [BergerTip(**t) for t in (result or [])]
     return BergerTipsResponse(tips=tip_objs)
+
+
+@router.post("/ask", response_model=AdvisorQueryResponse)
+async def ask(req: AdvisorQueryRequest):
+    """Free-form, conversational Q&A answered as a fee-only RIA / fiduciary, grounded in the
+    portfolio snapshot. Not cached (answers vary per question and carry conversation context).
+    Returns an empty answer when GEMINI_API_KEY is unset; raises 502 with a detail message when
+    the AI call genuinely fails."""
+    try:
+        answer = await ai_svc.advisor_query(req.summary, req.question, req.history)
+    except AIError as e:
+        raise HTTPException(status_code=502, detail=_friendly_ai_error(e))
+    return AdvisorQueryResponse(answer=answer or "")

@@ -241,7 +241,9 @@ export async function projectPortfolio(
     value_by_class: valueByClass,
     // Backend requires horizon_months in [1, 1200]; clamp so a 0/blank horizon never 422s.
     horizon_months: Math.min(1200, Math.max(1, Math.round(horizonMonths) || 1)),
-    n_paths: 1000,
+    // 400 paths keeps p10/p50/p90 statistically stable while ~halving compute time on the
+    // free-tier backend; the benchmark overlay already caps at min(n_paths, 400) server-side.
+    n_paths: 400,
     assumptions: opts?.assumptions ?? null,
     fee_drag: opts?.feeDrag ?? 0,
     monthly_contribution: opts?.monthlyContribution ?? 0,
@@ -337,6 +339,24 @@ export async function getInsights(summary: unknown): Promise<string[]> {
 export async function getBergerTips(summary: unknown): Promise<BergerTip[]> {
   const { data } = await api.post<{ tips: BergerTip[] }>("/advisor/tips", { summary });
   return data.tips;
+}
+
+export interface AdvisorTurn {
+  role: "user" | "advisor";
+  content: string;
+}
+
+export async function askAdvisor(
+  summary: unknown,
+  question: string,
+  history: AdvisorTurn[] = []
+): Promise<string> {
+  const { data } = await api.post<{ answer: string }>("/advisor/ask", {
+    summary,
+    question,
+    history,
+  });
+  return data.answer;
 }
 
 // ---------- Rebalance history ----------

@@ -308,3 +308,15 @@ class BergerTip(BaseModel):
 
 class BergerTipsResponse(BaseModel):
     tips: list[BergerTip]
+
+
+class AdvisorQueryRequest(BaseModel):
+    # anonymized portfolio snapshot (allocations, accounts, grade, risk, projection). No PII.
+    summary: dict
+    question: str
+    # prior conversation turns for follow-up context: [{"role": "user"|"advisor", "content": "..."}]
+    history: list[dict] = []
+
+
+class AdvisorQueryResponse(BaseModel):
+    answer: str   # empty string => AI not configured (no key)

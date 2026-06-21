@@ -33,6 +33,7 @@ import DriftBandControl from "../components/DriftBandControl";
 import GlidePathControl, { GLIDE_PATH_DEFAULT } from "../components/GlidePathControl";
 import type { GlidePathParams } from "../api/client";
 import RiskPanel from "../components/RiskPanel";
+import AdvisorAskBox from "../components/AdvisorAskBox";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -172,24 +173,45 @@ export default function DashboardPage() {
     if (!analysis) return;
     let cancelled = false;
     setProjecting(true);
-    projectPortfolio(valueByClass, horizon, {
-      feeDrag,
-      monthlyContribution: contribution,
-      benchmark: benchmark ?? undefined,
-    })
-      .then((data) => {
+
+    // The projection is the app's slowest call (Monte Carlo on a free-tier backend) and the only
+    // one not behind React Query's retry. A single transient cold-start 502 would otherwise stick
+    // the error note and keep a stale (e.g. benchmark-less) result. Retry transient failures with
+    // backoff so it self-heals; surface real 4xx immediately.
+    const delays = [0, 1500, 4000];
+    const isTransient = (e: { response?: { status?: number } }) =>
+      !e.response || (e.response.status ?? 500) >= 500 || e.response.status === 429;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    (async () => {
+      for (let attempt = 0; attempt < delays.length; attempt++) {
+        if (delays[attempt]) await sleep(delays[attempt]);
         if (cancelled) return;
-        setProjection(data);
-        setProjError(null);
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        const err = e as { response?: { data?: { detail?: string } }; message?: string };
-        setProjError(err?.response?.data?.detail ?? err?.message ?? "Projection failed.");
-      })
-      .finally(() => {
-        if (!cancelled) setProjecting(false);
-      });
+        try {
+          const data = await projectPortfolio(valueByClass, horizon, {
+            feeDrag,
+            monthlyContribution: contribution,
+            benchmark: benchmark ?? undefined,
+          });
+          if (cancelled) return;
+          setProjection(data);
+          setProjError(null);
+          setProjecting(false);
+          return;
+        } catch (e: unknown) {
+          const err = e as { response?: { status?: number; data?: { detail?: string } }; message?: string };
+          const lastAttempt = attempt === delays.length - 1;
+          if (!isTransient(err) || lastAttempt) {
+            if (cancelled) return;
+            setProjError(err?.response?.data?.detail ?? err?.message ?? "Projection failed.");
+            setProjecting(false);
+            return;
+          }
+          // else: transient and attempts remain -> loop and retry after backoff
+        }
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
@@ -596,6 +618,17 @@ export default function DashboardPage() {
             ))}
           </ul>
         )}
+      </Card>
+
+      {/* ---- ask a financial advisor (conversational) ---- */}
+      <Card>
+        <h3 className="font-semibold mb-3">Ask a Financial Advisor</h3>
+        <AdvisorAskBox
+          analysis={analysis}
+          projection={projection}
+          horizon={horizon}
+          contribution={contribution}
+        />
       </Card>
 
       {/* ---- scenario / what-if ---- */}

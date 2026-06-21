@@ -21,6 +21,17 @@ function riskColor(value: number, greenThresh: number, yellowThresh: number, hig
   }
 }
 
+/** "Good / Average / Concerning" band text derived from the SAME thresholds as riskColor, so the
+ * words can never drift from the chip color. `higher` means a bigger value is better. */
+function bandGuide(green: number, yellow: number, higher: boolean, unit = "%"): string {
+  const g = `${green}${unit}`;
+  const y = `${yellow}${unit}`;
+  if (higher) {
+    return `Good ≥ ${g} · Average ${y}–${g} · Concerning < ${y}`;
+  }
+  return `Good ≤ ${g} · Average ${g}–${y} · Concerning > ${y}`;
+}
+
 function fmt1(n: number) {
   return n.toFixed(1) + "%";
 }
@@ -35,9 +46,10 @@ interface Chip {
   subtitle: string;
   color: string;
   help: string;
+  guide: string;
 }
 
-function MetricChip({ label, value, subtitle, color, help }: Chip) {
+function MetricChip({ label, value, subtitle, color, help, guide }: Chip) {
   return (
     <div className="group relative flex flex-col gap-0.5 min-w-[120px] border border-border rounded-lg p-3">
       <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted">
@@ -59,6 +71,9 @@ function MetricChip({ label, value, subtitle, color, help }: Chip) {
         className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-60 rounded-lg border border-border bg-surface p-2.5 text-[11px] font-normal normal-case leading-relaxed text-fg opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {help}
+        <span className="mt-1.5 block border-t border-border pt-1.5 text-muted">
+          <span className="font-medium text-fg">Guideline:</span> {guide}
+        </span>
       </span>
     </div>
   );
@@ -114,6 +129,7 @@ export default function RiskPanel({ risk }: Props) {
       subtitle: "annual estimate",
       color: riskColor(risk.expected_return_pct, 6, 3, true),
       help: "The average yearly growth your mix of assets has earned historically, weighted by how much you hold of each. Higher is better, but it usually comes with more volatility — it sets your long-run wealth-building pace.",
+      guide: bandGuide(6, 3, true),
     },
     {
       label: "Volatility",
@@ -121,6 +137,7 @@ export default function RiskPanel({ risk }: Props) {
       subtitle: "annual std dev",
       color: riskColor(risk.volatility_pct, 10, 18, false),
       help: "How much your portfolio's value swings up and down in a typical year (standard deviation). Lower means a smoother ride; high volatility raises the odds you'll sell in a panic at the wrong time.",
+      guide: bandGuide(10, 18, false),
     },
     {
       label: "Max Drawdown Est.",
@@ -128,6 +145,7 @@ export default function RiskPanel({ risk }: Props) {
       subtitle: "rough worst case",
       color: riskColor(Math.abs(risk.max_drawdown_pct), 25, 45, false),
       help: "A rough estimate of the worst peak-to-trough drop this mix could see in a severe downturn. It's a gut-check: could you stay invested if your balance fell this far without selling?",
+      guide: bandGuide(25, 45, false) + " (size of the drop)",
     },
     {
       label: "Diversification",
@@ -135,6 +153,7 @@ export default function RiskPanel({ risk }: Props) {
       subtitle: "vol saved by mix",
       color: riskColor(risk.diversification_benefit_pct, 10, 5, true),
       help: "How much volatility you avoid because your assets don't all move together, versus holding them in isolation. Higher means your mix is doing real work to reduce risk for free.",
+      guide: bandGuide(10, 5, true),
     },
     {
       label: "Largest Position",
@@ -142,6 +161,7 @@ export default function RiskPanel({ risk }: Props) {
       subtitle: "% of portfolio",
       color: riskColor(risk.largest_position_pct, 10, 20, false),
       help: "The share of your whole portfolio sitting in a single holding. A large number means concentration risk — one bad pick can dominate your results, so lower is generally safer.",
+      guide: bandGuide(10, 20, false),
     },
     {
       label: "Annual Fees",
@@ -149,6 +169,7 @@ export default function RiskPanel({ risk }: Props) {
       subtitle: fmtMoney(risk.annual_fee_cost) + "/yr",
       color: riskColor(risk.weighted_fee_pct, 0.1, 0.4, false),
       help: "The blended yearly expense ratio across your funds, in percent and dollars. Fees compound against you every year, so even a few tenths of a percent can cost tens of thousands over decades — lower is better.",
+      guide: bandGuide(0.1, 0.4, false),
     },
   ];
 

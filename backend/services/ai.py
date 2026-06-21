@@ -120,6 +120,55 @@ async def berger_tips(summary: dict) -> list[dict] | None:
         raise AIError(f"{type(e).__name__}: {e}") from e
 
 
+async def advisor_query(summary: dict, question: str,
+                        history: list[dict] | None = None) -> str | None:
+    """Answer a free-form question as a thoughtful fee-only RIA / fiduciary, grounded ONLY
+    in the provided portfolio summary (allocations vs. target, accounts, grade, risk metrics,
+    and the current projection). Conversational: prior turns in `history` ([{role, content}])
+    are replayed for follow-up context. Returns plain text, or None when no key is set; raises
+    AIError on a genuine failure so the router can surface it."""
+    if not settings.GEMINI_API_KEY:
+        return None
+
+    try:
+        client = _client()
+        convo = ""
+        for turn in (history or []):
+            role = "User" if turn.get("role") == "user" else "Advisor"
+            content = str(turn.get("content", "")).strip()
+            if content:
+                convo += f"{role}: {content}\n"
+
+        prompt = (
+            "You are a thoughtful, fee-only Registered Investment Advisor (RIA) acting as a "
+            "fiduciary for this client. You favor low-cost index funds, tax-efficient asset "
+            "location, broad diversification, and disciplined long-term investing. You are given "
+            "an anonymized snapshot of the client's portfolio as JSON: asset-class allocations "
+            "vs. targets, holdings by account type, a tax-location grade, risk/reward metrics, "
+            "and the current Monte Carlo projection. Answer the client's question using ONLY this "
+            "data plus sound, mainstream financial-planning principles. Reference their actual "
+            "numbers, be specific and concrete, and give clear, prioritized, actionable "
+            "recommendations. If the question asks for something the data cannot answer (e.g. "
+            "details not present), say so plainly rather than inventing figures. Keep it focused "
+            "and readable - short paragraphs or bullet points, plain English, no markdown headers. "
+            "End with a single short line reminding the client this is educational information, "
+            "not individualized investment, tax, or legal advice.\n\n"
+            f"PORTFOLIO SNAPSHOT:\n{json.dumps(summary, indent=2)}\n\n"
+            + (f"CONVERSATION SO FAR:\n{convo}\n" if convo else "")
+            + f"CLIENT QUESTION:\n{question.strip()}"
+        )
+        response = await _generate_with_retry(client, prompt)
+        text = (response.text or "").strip()
+        if not text:
+            raise AIError("Model returned an empty response.")
+        return text
+    except AIError:
+        raise
+    except Exception as e:
+        logger.exception("advisor_query generation failed")
+        raise AIError(f"{type(e).__name__}: {e}") from e
+
+
 async def suggest_ticker_tag(ticker: str) -> dict | None:
     """Best-guess asset_class + tax_efficiency for an unknown ticker. Guarded by an
     UNKNOWN sentinel so the model returns None rather than hallucinating for tickers
