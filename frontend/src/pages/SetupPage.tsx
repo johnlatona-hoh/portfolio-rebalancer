@@ -201,6 +201,15 @@ export default function SetupPage() {
           )}
           {classifying && <span className="text-sm text-muted">classifying tickers…</span>}
         </div>
+        {accounts.length > 0 && totalValue === 0 && (
+          <p className="mt-3 text-sm text-warn">
+            Accounts loaded but showing $0? Try a hard refresh (
+            <kbd className="px-1 py-0.5 rounded border border-border font-mono text-xs">Ctrl+Shift+R</kbd>
+            {" "}on Windows,{" "}
+            <kbd className="px-1 py-0.5 rounded border border-border font-mono text-xs">Cmd+Shift+R</kbd>
+            {" "}on Mac) to load the latest version, then re-upload.
+          </p>
+        )}
         {parseErrors.length > 0 && (
           <ul className="mt-3 text-sm text-bad list-disc pl-5">
             {parseErrors.map((e, i) => (
