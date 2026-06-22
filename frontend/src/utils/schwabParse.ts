@@ -394,7 +394,11 @@ const ACCOUNT_TYPES_SET = new Set(["taxable", "tax_deferred", "tax_free"]);
 /** Fallback parser for the simple canonical CSV template (account_name, account_type, ticker,
  *  quantity, cost_basis, current_value). Used when the file is not a Schwab export. */
 export function parseTemplateCsv(text: string, fileName: string): ParsedAccount[] {
-  const res = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
+  const res = Papa.parse<Record<string, string>>(text, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (h: string) => h.trim(),
+  });
   const groups = new Map<string, ParsedAccount>();
   for (const row of res.data) {
     const ticker = (row.ticker ?? "").trim().toUpperCase();
@@ -414,14 +418,14 @@ export function parseTemplateCsv(text: string, fileName: string): ParsedAccount[
       });
     }
     const acct = groups.get(account_name)!;
-    const current_value = Number(row.current_value) || 0;
+    const current_value = cleanNumber(row.current_value);
     if (ticker === "CASH") acct.cashValue += current_value;
     acct.holdings.push({
       account_name,
       account_type,
       ticker,
-      quantity: Number(row.quantity) || 0,
-      cost_basis: Number(row.cost_basis) || 0,
+      quantity: cleanNumber(row.quantity),
+      cost_basis: cleanNumber(row.cost_basis),
       current_value,
     });
     if (ticker !== "CASH") acct.positionCount += 1;
