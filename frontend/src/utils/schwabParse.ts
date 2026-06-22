@@ -83,6 +83,7 @@ export function parseSchwabCsv(text: string, fileName: string): ParsedAccount | 
   for (const r of rows.slice(headerIdx + 1)) {
     const sym = (r[symIdx] ?? "").trim();
     if (!sym) continue;
+    if (/total/i.test(sym)) continue; // skip "Positions Total" summary row
     if (/^cash/i.test(sym)) {
       cashValue += cleanNumber(r[mktIdx]);
       continue;
